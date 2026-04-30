@@ -1,0 +1,351 @@
+/* ─── app shell ────────────────────────────────────────────────────────────── */
+
+.sa-app {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ─── header ───────────────────────────────────────────────────────────────── */
+
+.sa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.sa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sa-logo {
+  width: 28px;
+  height: 28px;
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+}
+
+.sa-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-h);
+  letter-spacing: -0.02em;
+}
+
+.sa-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ─── network indicator ────────────────────────────────────────────────────── */
+
+.sa-net-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sa-net-dot.up   { background: #4ecb71; box-shadow: 0 0 6px #4ecb7180; }
+.sa-net-dot.down { background: #f04848; box-shadow: 0 0 6px #f0484880; }
+
+.sa-net-label {
+  font-size: 12px;
+  color: var(--text);
+  min-width: 44px;
+}
+
+/* ─── mic button ───────────────────────────────────────────────────────────── */
+
+.sa-mic-wrap {
+  position: relative;
+}
+
+.sa-mic-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2, #1a1430);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+}
+
+.sa-mic-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.sa-mic-btn.active {
+  background: #3d0066;
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
+  animation: micPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes micPulse {
+  0%, 100% { box-shadow: 0 0 8px var(--accent-glow); }
+  50%       { box-shadow: 0 0 20px var(--accent-glow); }
+}
+
+.sa-chrome-tip {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-h);
+  white-space: nowrap;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+  z-index: 20;
+  animation: tipSlideIn 0.2s ease both;
+}
+
+/* ─── search controls ──────────────────────────────────────────────────────── */
+
+.sa-controls {
+  padding: 16px 20px 0;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.sa-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.sa-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--text);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.sa-input {
+  width: 100%;
+  padding: 12px 40px 12px 44px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text-h);
+  font-size: 16px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.sa-input:focus {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.sa-input::placeholder { color: var(--text); opacity: 0.4; }
+
+/* hide browser's built-in clear button */
+.sa-input::-webkit-search-cancel-button { display: none; }
+
+.sa-clear {
+  position: absolute;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  opacity: 0.5;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.sa-clear:hover { opacity: 1; background: rgba(255,255,255,0.07); }
+
+/* ─── listening bar ────────────────────────────────────────────────────────── */
+
+.sa-listening {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sa-listen-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: micPulse 1s ease-in-out infinite;
+}
+
+.sa-stop-voice {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-dim);
+  color: var(--accent);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.sa-stop-voice:hover { opacity: 0.75; }
+
+/* ─── mode row ─────────────────────────────────────────────────────────────── */
+
+.sa-mode-row {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.sa-mode {
+  padding: 6px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.sa-mode:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.sa-mode.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ─── hint ─────────────────────────────────────────────────────────────────── */
+
+.sa-hint {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.55;
+  margin-top: 8px;
+  margin-bottom: 16px;
+  line-height: 1.4;
+}
+
+/* ─── results ──────────────────────────────────────────────────────────────── */
+
+.sa-results {
+  flex: 1;
+  padding: 0 20px 32px;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sa-empty {
+  font-size: 14px;
+  color: var(--text);
+  opacity: 0.55;
+  text-align: center;
+  margin-top: 32px;
+}
+
+.sa-cap {
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.45;
+  text-align: center;
+  margin-top: 6px;
+}
+
+/* ─── verse card ───────────────────────────────────────────────────────────── */
+
+.sa-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 18px;
+  transition: border-color 0.15s;
+}
+
+.sa-card:hover { border-color: var(--accent-border); }
+
+.sa-card-g {
+  font-size: 16px;
+  color: var(--text-h);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  word-break: break-word;
+}
+
+.sa-card-t {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.55;
+  margin-bottom: 10px;
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.sa-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.sa-card-meta span::before {
+  content: '·';
+  margin-right: 5px;
+  opacity: 0.5;
+}
+
+.sa-card-meta span:first-child::before { display: none; }
+
+/* ─── responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 520px) {
+  .sa-header { padding: 12px 14px; }
+  .sa-controls { padding: 12px 14px 0; }
+  .sa-results { padding: 0 14px 24px; }
+  .sa-net-label { display: none; }
+  .sa-input { font-size: 15px; }
+}

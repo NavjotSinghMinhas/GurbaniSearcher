@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1c0a3a"/>
+      <stop offset="100%" stop-color="#0a0814"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="0.5" y2="1">
+      <stop offset="0%" stop-color="#c46eff"/>
+      <stop offset="100%" stop-color="#7e14ff"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#aa3bff" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#7e14ff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="108" fill="url(#bg)"/>
+
+  <!-- Subtle glow blob behind the icon -->
+  <ellipse cx="230" cy="215" rx="130" ry="120" fill="url(#glow)" filter="url(#soft)"/>
+
+  <!-- Magnifying glass ring -->
+  <circle cx="218" cy="208" r="96" fill="none" stroke="url(#accent)" stroke-width="30" stroke-linecap="round"/>
+
+  <!-- Magnifying glass handle -->
+  <line x1="291" y1="281" x2="372" y2="362" stroke="url(#accent)" stroke-width="30" stroke-linecap="round"/>
+
+  <!-- Scripture lines inside the lens (three wavy strokes) -->
+  <path d="M158 188 Q178 170 198 188 Q218 206 238 188 Q258 170 278 188"
+        fill="none" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.65"/>
+  <path d="M158 215 Q178 197 198 215 Q218 233 238 215 Q258 197 278 215"
+        fill="none" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.40"/>
+  <path d="M158 242 Q178 224 198 242 Q218 260 238 242"
+        fill="none" stroke="white" stroke-width="9" stroke-linecap="round" opacity="0.20"/>
+
+  <!-- Small dot accent at top-right of lens -->
+  <circle cx="290" cy="128" r="12" fill="#c46eff" opacity="0.7"/>
+</svg>
