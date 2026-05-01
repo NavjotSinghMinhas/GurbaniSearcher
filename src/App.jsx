@@ -4,12 +4,13 @@ import { DownloadScreen } from './DownloadScreen.jsx'
 import { LoadingScreen } from './LoadingScreen.jsx'
 import { UpdateBanner } from './UpdateBanner.jsx'
 import { SearchApp } from './SearchApp.jsx'
+import { DisplayApp } from './DisplayApp.jsx'
 import './App.css'
 
-function App() {
-  const { status, progress, bytesDownloaded, totalBytes, speed, error } = useGurbaniData()
+const IS_DISPLAY = new URLSearchParams(window.location.search).has('display')
 
-  // Populated by LoadingScreen once it finishes reading + parsing from OPFS
+function GurbaniApp() {
+  const { status, progress, bytesDownloaded, totalBytes, speed, error } = useGurbaniData()
   const [data, setData] = useState(null)
 
   if (status === 'error') {
@@ -37,8 +38,6 @@ function App() {
     )
   }
 
-  // Show loading screen until data is in memory.
-  // dataReady tells LoadingScreen it's safe to start reading from OPFS.
   if (!data) {
     return (
       <LoadingScreen
@@ -54,6 +53,10 @@ function App() {
       <SearchApp data={data} />
     </>
   )
+}
+
+function App() {
+  return IS_DISPLAY ? <DisplayApp /> : <GurbaniApp />
 }
 
 export default App
