@@ -237,10 +237,13 @@ export function SearchApp({ data }) {
       e.preventDefault()
       const dir = e.key === 'ArrowDown' ? 1 : -1
       if (bcastSvsRef.current.length > 0) {
-        const svs   = bcastSvsRef.current
-        const count = displaySettingsRef.current.verseCount || 1
-        const idx   = svs.findIndex(v => v.ID === bcastDvRef.current?.ID)
-        const next  = Math.max(0, Math.min(svs.length - count, idx + dir * count))
+        const svs         = bcastSvsRef.current
+        const count       = displaySettingsRef.current.verseCount || 1
+        const idx         = svs.findIndex(v => v.ID === bcastDvRef.current?.ID)
+        const currentPage = Math.floor(idx / count)
+        const totalPages  = Math.ceil(svs.length / count)
+        const nextPage    = Math.max(0, Math.min(totalPages - 1, currentPage + dir))
+        const next        = nextPage * count
         if (next !== idx) {
           const v = svs[next]
           setBcastDv(v)
