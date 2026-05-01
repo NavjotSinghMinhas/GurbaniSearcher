@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import gurmukhiUtils from 'gurmukhi-utils'
-import { BG_PRESETS, getTranslation, renderGurmukhi } from './DisplayApp.jsx'
+import { BG_PRESETS, getTranslation, getTranslationOptions, renderGurmukhi } from './DisplayApp.jsx'
 import './SearchApp.css'
 
 const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
@@ -12,7 +12,7 @@ const SETTINGS_KEY = 'gurbani-disp-settings'
 const THEME_KEY    = 'gurbani-theme'
 const MAX_HISTORY  = 50
 const DEFAULT_SETTINGS = {
-  fontSize: 48, transSize: 20, showTranslation: true, larivar: false, bg: 'dark',
+  fontSize: 48, transSize: 20, showTranslation: true, showMeta: true, larivar: false, bg: 'dark', verseCount: 1, translationKey: 'auto',
 }
 
 const MODES = [
@@ -181,19 +181,20 @@ export function SearchApp({ data }) {
     channelRef.current = ch
     ch.onmessage = e => {
       if (e.data.type === 'ping' && bcastDvRef.current && bcastLiveRef.current) {
-        ch.postMessage({
-          type: 'sync',
-          verse: bcastDvRef.current,
-          settings: displaySettingsRef.current,
-          voiceActive: kirtanModeRef.current === 'auto',
-        })
+        pushBroadcast(bcastDvRef.current, displaySettingsRef.current, kirtanModeRef.current === 'auto')
       }
     }
     return () => { ch.close(); channelRef.current = null }
   }, [])
 
-  function pushBroadcast(verse, settings, voiceActive = false) {
-    channelRef.current?.postMessage({ type: 'sync', verse, settings, voiceActive })
+  function pushBroadcast(anchorVerse, settings, voiceActive = false, overrideSvs = null) {
+    const svs = overrideSvs ?? bcastSvsRef.current
+    const count = settings.verseCount || 1
+    const idx = svs.findIndex(v => v.ID === anchorVerse?.ID)
+    const broadcastVerses = idx !== -1
+      ? svs.slice(idx, Math.min(idx + count, svs.length))
+      : anchorVerse ? [anchorVerse] : []
+    channelRef.current?.postMessage({ type: 'sync', verses: broadcastVerses, settings, voiceActive })
   }
 
   function sendFullscreen() {
@@ -205,12 +206,7 @@ export function SearchApp({ data }) {
       const next = { ...prev, [key]: value }
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(next))
       if (bcastDvRef.current && bcastLiveRef.current) {
-        channelRef.current?.postMessage({
-          type: 'sync',
-          verse: bcastDvRef.current,
-          settings: next,
-          voiceActive: kirtanModeRef.current === 'auto',
-        })
+        pushBroadcast(bcastDvRef.current, next, kirtanModeRef.current === 'auto')
       }
       return next
     })
@@ -241,9 +237,10 @@ export function SearchApp({ data }) {
       e.preventDefault()
       const dir = e.key === 'ArrowDown' ? 1 : -1
       if (bcastSvsRef.current.length > 0) {
-        const svs  = bcastSvsRef.current
-        const idx  = svs.findIndex(v => v.ID === bcastDvRef.current?.ID)
-        const next = Math.max(0, Math.min(svs.length - 1, idx + dir))
+        const svs   = bcastSvsRef.current
+        const count = displaySettingsRef.current.verseCount || 1
+        const idx   = svs.findIndex(v => v.ID === bcastDvRef.current?.ID)
+        const next  = Math.max(0, Math.min(svs.length - count, idx + dir * count))
         if (next !== idx) {
           const v = svs[next]
           setBcastDv(v)
@@ -299,10 +296,7 @@ export function SearchApp({ data }) {
     setKirtanCandidate(null)
     setKirtanTranscript('')
     if (bcastDvRef.current) {
-      channelRef.current?.postMessage({
-        type: 'sync', verse: bcastDvRef.current,
-        settings: displaySettingsRef.current, voiceActive: false,
-      })
+      pushBroadcast(bcastDvRef.current, displaySettingsRef.current, false)
     }
   }
 
@@ -352,7 +346,7 @@ export function SearchApp({ data }) {
     setBcastDv(verse)
     setBcastLive(true)
     setShowPreview(false)
-    pushBroadcast(verse, displaySettingsRef.current, voiceActive)
+    pushBroadcast(verse, displaySettingsRef.current, voiceActive, svs)
   }
 
   function historyEntry(verse) {
@@ -719,10 +713,14 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, isBroadcasting,
 /* ── BroadcastPanel ──────────────────────────────────────────── */
 /* Locked to what is live. Shows display controls. No close button. */
 function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
-  const preset    = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
-  const gText     = displayVerse ? renderGurmukhi(displayVerse.Gurmukhi, displaySettings.larivar) : ''
-  const trans     = displayVerse && displaySettings.showTranslation ? getTranslation(displayVerse.Translations) : ''
-  const activeRef = useRef(null)
+  const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
+  const count      = displaySettings.verseCount || 1
+  const anchorIdx  = shabadVerses.findIndex(v => v.ID === displayVerse?.ID)
+  const verseWindow = anchorIdx !== -1
+    ? shabadVerses.slice(anchorIdx, Math.min(anchorIdx + count, shabadVerses.length))
+    : displayVerse ? [displayVerse] : []
+  const transOpts  = getTranslationOptions(displayVerse?.Translations)
+  const activeRef  = useRef(null)
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -754,11 +752,21 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
 
       {/* live preview */}
       <div className="sp-preview" style={{ background: preset.bg, color: preset.fg }}>
-        {displayVerse ? (
-          <>
-            <p className="sp-preview-g" style={{ fontSize: 28, fontFamily: 'var(--gurmukhi)' }}>{gText}</p>
-            {trans && <p className="sp-preview-t" style={{ fontSize: 14, color: preset.sub }}>{trans}</p>}
-          </>
+        <div className="sp-preview-actions">
+          <button className="sp-preview-action-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
+          <button className="sp-preview-action-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
+        </div>
+        {verseWindow.length > 0 ? (
+          verseWindow.map((v, i) => {
+            const g = renderGurmukhi(v.Gurmukhi, displaySettings.larivar)
+            const t = displaySettings.showTranslation ? getTranslation(v.Translations, displaySettings.translationKey) : ''
+            return (
+              <div key={v.ID} className={`sp-preview-verse${i > 0 ? ' sp-preview-verse-sep' : ''}`}>
+                <p className="sp-preview-g" style={{ fontSize: 28, fontFamily: 'var(--gurmukhi)' }}>{g}</p>
+                {t && <p className="sp-preview-t" style={{ fontSize: 14, color: preset.sub }}>{t}</p>}
+              </div>
+            )
+          })
         ) : (
           <p className="sp-preview-empty" style={{ color: preset.sub }}>Select a verse below</p>
         )}
@@ -767,13 +775,6 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
       {/* display controls */}
       <div className="sp-controls">
         <div className="sp-ctrl-row">
-          <span className="sp-ctrl-label">Screen</span>
-          <div className="sp-ctrl-group">
-            <button className="sp-ctrl-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
-            <button className="sp-ctrl-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
-          </div>
-        </div>
-        <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Gurmukhi</span>
           <div className="sp-ctrl-group">
             <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('fontSize', Math.max(20, displaySettings.fontSize - 4))}>A−</button>
@@ -781,19 +782,46 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
             <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('fontSize', Math.min(160, displaySettings.fontSize + 4))}>A+</button>
           </div>
         </div>
-        <div className="sp-ctrl-row">
-          <span className="sp-ctrl-label">Translation</span>
-          <div className="sp-ctrl-group">
-            <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('transSize', Math.max(10, (displaySettings.transSize || 20) - 2))}>a−</button>
-            <span className="sp-ctrl-val">{displaySettings.transSize || 20}px</span>
-            <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('transSize', Math.min(80, (displaySettings.transSize || 20) + 2))}>a+</button>
+        {transOpts.length > 0 && (
+          <div className="sp-ctrl-row">
+            <span className="sp-ctrl-label">Translation</span>
+            <div className="sp-ctrl-group">
+              <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('transSize', Math.max(10, (displaySettings.transSize || 20) - 2))}>a−</button>
+              <span className="sp-ctrl-val">{displaySettings.transSize || 20}px</span>
+              <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('transSize', Math.min(80, (displaySettings.transSize || 20) + 2))}>a+</button>
+            </div>
           </div>
-        </div>
+        )}
         <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Options</span>
           <div className="sp-ctrl-group">
-            <button className={`sp-ctrl-btn${displaySettings.showTranslation ? ' active' : ''}`} onClick={() => onUpdateSetting('showTranslation', !displaySettings.showTranslation)}>Translation</button>
+            {transOpts.length > 0 && (
+              <button className={`sp-ctrl-btn${displaySettings.showTranslation ? ' active' : ''}`} onClick={() => onUpdateSetting('showTranslation', !displaySettings.showTranslation)}>Translation</button>
+            )}
+            <button className={`sp-ctrl-btn${displaySettings.showMeta !== false ? ' active' : ''}`} onClick={() => onUpdateSetting('showMeta', displaySettings.showMeta === false ? true : false)}>Ang &amp; Source</button>
             <button className={`sp-ctrl-btn${displaySettings.larivar ? ' active' : ''}`} onClick={() => onUpdateSetting('larivar', !displaySettings.larivar)}>Larivar</button>
+          </div>
+        </div>
+        {transOpts.length > 1 && displaySettings.showTranslation && (
+          <div className="sp-ctrl-row">
+            <span className="sp-ctrl-label">Version</span>
+            <div className="sp-ctrl-group sp-ctrl-group-wrap">
+              {transOpts.map(opt => (
+                <button
+                  key={opt.key}
+                  className={`sp-ctrl-btn${(displaySettings.translationKey || 'auto') === opt.key ? ' active' : ''}`}
+                  onClick={() => onUpdateSetting('translationKey', opt.key)}
+                >{opt.label}</button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div className="sp-ctrl-row">
+          <span className="sp-ctrl-label">Verses</span>
+          <div className="sp-ctrl-group">
+            <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('verseCount', Math.max(1, count - 1))}>−</button>
+            <span className="sp-ctrl-val">{count}</span>
+            <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('verseCount', Math.min(8, count + 1))}>+</button>
           </div>
         </div>
         <div className="sp-ctrl-row">
@@ -818,12 +846,13 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
       <div className="sp-verses">
         <p className="sp-verses-hint">↑ ↓ navigate · broadcasting updates live</p>
         {shabadVerses.map((v, i) => {
-          const isActive = displayVerse?.ID === v.ID
+          const isAnchor   = displayVerse?.ID === v.ID
+          const isInWindow = anchorIdx !== -1 && i > anchorIdx && i < anchorIdx + count
           return (
             <div
               key={v.ID}
-              ref={isActive ? activeRef : null}
-              className={`sp-verse${isActive ? ' active' : ''}`}
+              ref={isAnchor ? activeRef : null}
+              className={`sp-verse${isAnchor ? ' active' : isInWindow ? ' in-window' : ''}`}
               onClick={() => onSelectVerse(v)}
               role="button" tabIndex={0}
               onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
