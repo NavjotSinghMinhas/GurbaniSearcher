@@ -1,17 +1,18 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gurmukhi:wght@400;500;600&display=swap');
 
+/* ── dark (default) ─────────────────────────────────────────── */
 :root {
-  --bg:            #080611;
-  --surface:       #110d1e;
-  --surface-2:     #1a1430;
-  --border:        #2c2244;
-  --text:          #8878a8;
+  --bg:            #16121f;
+  --surface:       #1f1a30;
+  --surface-2:     #2a2440;
+  --border:        #38305a;
+  --text:          #a094c8;
   --text-h:        #ede8fc;
-  --accent:        #aa3bff;
-  --accent-dim:    rgba(170, 59, 255, 0.14);
-  --accent-glow:   rgba(170, 59, 255, 0.45);
-  --accent-border: rgba(170, 59, 255, 0.35);
-  --danger:        #ff5e5e;
+  --accent:        #a855f7;
+  --accent-dim:    rgba(168, 85, 247, 0.15);
+  --accent-glow:   rgba(168, 85, 247, 0.4);
+  --accent-border: rgba(168, 85, 247, 0.35);
+  --danger:        #f87171;
 
   --sans:     system-ui, 'Segoe UI', Roboto, sans-serif;
   --gurmukhi: 'Noto Sans Gurmukhi', system-ui, sans-serif;
@@ -25,12 +26,27 @@
   text-rendering: optimizeLegibility;
 }
 
-*, *::before, *::after { box-sizing: border-box; }
+/* ── light ──────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --bg:            #f5f2eb;
+  --surface:       #ffffff;
+  --surface-2:     #edeae2;
+  --border:        #d6d0c2;
+  --text:          #7a7060;
+  --text-h:        #1a1208;
+  --accent:        #7c3aed;
+  --accent-dim:    rgba(124, 58, 237, 0.1);
+  --accent-glow:   rgba(124, 58, 237, 0.3);
+  --accent-border: rgba(124, 58, 237, 0.28);
+  --danger:        #dc2626;
+  color-scheme: light;
+}
 
+*, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; }
 
 #root {
-  min-height: 100svh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
 }
