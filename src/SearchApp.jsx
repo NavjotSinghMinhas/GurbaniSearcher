@@ -56,24 +56,87 @@ function runSearch(verses, query, mode) {
   return results
 }
 
-function matchKirtan(transcript, verses) {
-  const words = transcript.trim().split(/\s+/).filter(Boolean)
-  if (words.length < 2) return null
-  const q = words.slice(0, 8).map(w => {
-    const ch = isGurmukhi(w) ? toAscii(w.charAt(0)).charAt(0) : w.charAt(0)
-    return (ch || '').toLowerCase()
-  }).filter(Boolean).join('')
-  if (q.length < 2) return null
-  for (let len = Math.min(q.length, 6); len >= 2; len--) {
-    const prefix = q.slice(0, len)
-    let best = null, bestPos = Infinity
-    for (const v of verses) {
-      const pos = (v.FirstLetterEng || '').toLowerCase().indexOf(prefix)
-      if (pos !== -1 && pos < bestPos) { best = v; bestPos = pos }
+// Strip verse structural markers; keep Gurmukhi ASCII case (ਕ=k, ਖ=K etc.)
+function cleanWord(w) {
+  return w.replace(/[<>\[\]|(){}0-9]/g, '')
+}
+
+// Fuzzy word match: allow 1 edit for words ≤6 chars, 2 edits for longer.
+// Quick-reject on first char saves ~97% of comparisons in practice.
+function fuzzyWordMatch(a, b) {
+  if (a === b) return true
+  const la = a.length, lb = b.length
+  if (la < 2 || lb < 2) return false
+  const maxEdit = Math.max(la, lb) <= 6 ? 1 : 2
+  if (Math.abs(la - lb) > maxEdit) return false
+  if (la <= 5 && lb <= 5 && a[0] !== b[0]) return false
+  let row = Array.from({length: lb + 1}, (_, j) => j)
+  for (let i = 0; i < la; i++) {
+    const nxt = [i + 1]
+    let rowMin = i + 1
+    for (let j = 0; j < lb; j++) {
+      const v = a[i] === b[j] ? row[j] : 1 + Math.min(row[j + 1], nxt[j], row[j])
+      nxt.push(v)
+      if (v < rowMin) rowMin = v
     }
-    if (best) return best
+    if (rowMin > maxEdit) return false
+    row = nxt
   }
-  return null
+  return row[lb] <= maxEdit
+}
+
+// Count how many transcript words fuzzy-match at least one word in the verse
+function wordMatchCount(tWords, vWords) {
+  let n = 0
+  for (const tw of tWords) {
+    if (vWords.some(vw => fuzzyWordMatch(tw, vw))) n++
+  }
+  return n
+}
+
+// Context-aware voice matching on every interim result (word-by-word).
+// Uses Chrome's confidence directly, plus a word-level fuzzy match against
+// pre-split verse words (verseWordsMap) to handle kirtanis repeating words
+// or singing partial phrases.
+//
+// Thresholds (Chrome confidence 0–1):
+//   discovery (no context):  ≥0.60, need ≥2 word matches
+//   confirmed, same verse:   ≥0.25, need ≥1 word match  (repeating is fine)
+//   confirmed, same shabad:  ≥0.50, need ≥2 word matches
+//   confirmed, diff shabad:  ≥0.75, need ≥2 word matches
+function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVerses, verseWordsMap) {
+  if (!speechResults || speechResults.length === 0) return null
+
+  const lastAlt = speechResults[speechResults.length - 1][0]
+  const conf    = lastAlt.confidence || 0
+
+  // Convert recognized Gurmukhi (Unicode) → ASCII to match verse data encoding
+  const tWords = lastAlt.transcript.trim().split(/\s+/).filter(Boolean)
+    .map(w => cleanWord(isGurmukhi(w) ? toAscii(w) : w))
+    .filter(w => w.length >= 2)
+  if (tWords.length < 1) return null
+
+  const hasCtx = contextVerse != null
+  const ctxSet = contextShabadVerses ? new Set(contextShabadVerses.map(v => v.ID)) : null
+  let best = null, bestScore = 0
+
+  for (const v of verses) {
+    let req = 0.60, inertia = 0, minMatch = 2
+    if (hasCtx) {
+      if (v.ID === contextVerse.ID)  { req = 0.25; inertia = 3; minMatch = 1 }
+      else if (ctxSet?.has(v.ID))    { req = 0.50; inertia = 1; minMatch = 2 }
+      else                            { req = 0.75;              minMatch = 2 }
+    }
+    if (conf < req) continue
+
+    const matches = wordMatchCount(tWords, verseWordsMap.get(v.ID) || [])
+    if (matches < minMatch) continue
+
+    const score = matches + inertia
+    if (score > bestScore) { bestScore = score; best = v }
+  }
+
+  return best
 }
 
 function loadSettings() {
@@ -143,6 +206,7 @@ export function SearchApp({ data }) {
   const kirtanRecRef       = useRef(null)
   const kirtanModeRef      = useRef('off')
   const kirtanApprovedRef  = useRef(false)
+  const kirtanVerseWordsRef = useRef(null)   // pre-split verse words, built once on first start
   const debounceRef        = useRef(null)
   const inputRef           = useRef(null)
   const bcastDvRef         = useRef(null)
@@ -267,6 +331,15 @@ export function SearchApp({ data }) {
   /* ── kirtan voice ──────────────────────────────────────────── */
   function startKirtan() {
     if (!CHROME || !online) return
+    // Build pre-split word map once; reused for every onresult call this session
+    if (!kirtanVerseWordsRef.current) {
+      const m = new Map()
+      for (const v of verses) {
+        m.set(v.ID, v.Gurmukhi.split(/\s+/).map(cleanWord).filter(w => w.length >= 2))
+      }
+      kirtanVerseWordsRef.current = m
+    }
+    const verseWordsMap = kirtanVerseWordsRef.current
     /* eslint-disable no-undef */
     const R = new webkitSpeechRecognition()
     R.continuous = true; R.interimResults = true; R.lang = 'pa-IN'
@@ -274,11 +347,25 @@ export function SearchApp({ data }) {
       let transcript = ''
       for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
       setKirtanTranscript(transcript)
-      const match = matchKirtan(transcript, verses)
+      const approved = kirtanApprovedRef.current
+      const match = smartMatchKirtan(
+        e.results, verses,
+        approved ? bcastDvRef.current  : null,
+        approved ? bcastSvsRef.current : null,
+        verseWordsMap
+      )
       if (!match) return
       setKirtanCandidate(match)
-      if (kirtanApprovedRef.current) {
-        startBroadcast(match, getShabadVerses(match), false)
+      if (approved) {
+        const svs = bcastSvsRef.current
+        if (svs.length > 0 && svs.some(v => v.ID === match.ID)) {
+          // Stay in current shabad — just navigate to matched verse
+          setBcastDv(match)
+          pushBroadcast(match, displaySettingsRef.current, true)
+        } else {
+          // Different shabad detected — switch broadcast
+          startBroadcast(match, getShabadVerses(match), true)
+        }
       }
     }
     R.onerror = () => {}
