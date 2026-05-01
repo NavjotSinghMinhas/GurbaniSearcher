@@ -724,6 +724,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
     : displayVerse ? [displayVerse] : []
   const transOpts  = getTranslationOptions(displayVerse?.Translations)
   const activeRef  = useRef(null)
+  const [ctrlOpen, setCtrlOpen] = useState(false)
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
@@ -777,6 +778,11 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
 
       {/* display controls */}
       <div className="sp-controls">
+        <button className="sp-ctrl-toggle" onClick={() => setCtrlOpen(o => !o)}>
+          <span>Display Options</span>
+          <IconChevron open={ctrlOpen} />
+        </button>
+      {ctrlOpen && <div className="sp-ctrl-body">
         <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Gurmukhi</span>
           <div className="sp-ctrl-group">
@@ -807,16 +813,17 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
         </div>
         {transOpts.length > 1 && displaySettings.showTranslation && (
           <div className="sp-ctrl-row">
-            <span className="sp-ctrl-label">Version</span>
-            <div className="sp-ctrl-group sp-ctrl-group-wrap">
+            <span className="sp-ctrl-label">Language</span>
+            <select
+              className="sp-ctrl-select"
+              value={displaySettings.translationKey || 'auto'}
+              onChange={e => onUpdateSetting('translationKey', e.target.value)}
+            >
+              <option value="auto">Auto</option>
               {transOpts.map(opt => (
-                <button
-                  key={opt.key}
-                  className={`sp-ctrl-btn${(displaySettings.translationKey || 'auto') === opt.key ? ' active' : ''}`}
-                  onClick={() => onUpdateSetting('translationKey', opt.key)}
-                >{opt.label}</button>
+                <option key={opt.key} value={opt.key}>{opt.label}</option>
               ))}
-            </div>
+            </select>
           </div>
         )}
         <div className="sp-ctrl-row">
@@ -841,6 +848,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
             ))}
           </div>
         </div>
+      </div>}
       </div>
 
       </>}
@@ -912,6 +920,9 @@ function IconExternalLink() {
 }
 function IconFullscreen() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+}
+function IconChevron({ open }) {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}><polyline points="6 9 12 15 18 9"/></svg>
 }
 function IconSun() {
   return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
