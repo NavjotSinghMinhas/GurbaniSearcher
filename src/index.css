@@ -14,6 +14,8 @@
   --accent-border: rgba(168, 85, 247, 0.35);
   --danger:        #f87171;
 
+  --screen-bg: radial-gradient(ellipse 80% 60% at 50% 30%, #241848, #16121f 70%);
+
   --sans:     system-ui, 'Segoe UI', Roboto, sans-serif;
   --gurmukhi: 'Noto Sans Gurmukhi', system-ui, sans-serif;
 
@@ -39,6 +41,7 @@
   --accent-glow:   rgba(124, 58, 237, 0.3);
   --accent-border: rgba(124, 58, 237, 0.28);
   --danger:        #dc2626;
+  --screen-bg:     var(--bg);
   color-scheme: light;
 }
 

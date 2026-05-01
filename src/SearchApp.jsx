@@ -311,6 +311,7 @@ export function SearchApp({ data }) {
     kirtanApprovedRef.current = true
     setKirtanMode('auto')
     startBroadcast(kirtanCandidate, getShabadVerses(kirtanCandidate), true)
+    saveHistory(historyEntry(kirtanCandidate))
   }
 
   /* ── shabad helpers ────────────────────────────────────────── */
@@ -352,7 +353,10 @@ export function SearchApp({ data }) {
     setBcastLive(true)
     setShowPreview(false)
     pushBroadcast(verse, displaySettingsRef.current, voiceActive)
-    saveHistory({
+  }
+
+  function historyEntry(verse) {
+    return {
       id: `${verse.ID}_${Date.now()}`, timestamp: Date.now(),
       verseId: verse.ID,
       shabadId: verse.Shabads?.[0]?.ShabadID,
@@ -360,13 +364,14 @@ export function SearchApp({ data }) {
       source: verse.Source?.SourceEnglish,
       page: verse.PageNo,
       writer: verse.Writer?.WriterEnglish,
-    })
+    }
   }
 
-  /* "Send to Broadcast" from preview panel */
+  /* "Send to Broadcast" from preview panel — saves history (fresh search context) */
   function sendToBroadcast() {
     if (!pvDv) return
     startBroadcast(pvDv, pvSvs, kirtanModeRef.current === 'auto')
+    saveHistory(historyEntry(pvVerse))
   }
 
   /* stop live — panel stays open */
@@ -401,7 +406,7 @@ export function SearchApp({ data }) {
   /* ── history ───────────────────────────────────────────────── */
   function saveHistory(entry) {
     setSearchHistory(prev => {
-      const next = [entry, ...prev.filter(h => h.verseId !== entry.verseId)].slice(0, MAX_HISTORY)
+      const next = [entry, ...prev.filter(h => h.shabadId !== entry.shabadId)].slice(0, MAX_HISTORY)
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
       return next
     })
@@ -675,10 +680,7 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, isBroadcasting,
     <aside className="sa-panel sa-preview-panel" onClick={onFocus}>
       <div className="sp-header">
         <div className="sp-meta">
-          {verse?.Source?.SourceEnglish && <span>{verse.Source.SourceEnglish}</span>}
-          {verse?.Raag?.RaagEnglish     && <span>{verse.Raag.RaagEnglish}</span>}
-          {verse?.PageNo                && <span>Ang {verse.PageNo}</span>}
-          {verse?.Writer?.WriterEnglish && <span>{verse.Writer.WriterEnglish}</span>}
+          {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
         </div>
         <div className="sp-actions">
           <button className="sp-btn" onClick={onClose} title="Close preview"><IconX /></button>
@@ -737,9 +739,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
           title={isLive ? 'Stop broadcasting' : 'Resume broadcasting'}
         />
         <div className="sp-meta">
-          {verse?.Source?.SourceEnglish && <span>{verse.Source.SourceEnglish}</span>}
-          {verse?.PageNo                && <span>Ang {verse.PageNo}</span>}
-          {verse?.Writer?.WriterEnglish && <span>{verse.Writer.WriterEnglish}</span>}
+          {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
         </div>
         <div className="sp-actions">
           <button className="sp-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
@@ -748,12 +748,18 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
         </div>
       </div>
 
+      {!isLive && (
+        <button className="sp-broadcast-btn sp-go-live-btn" onClick={onResume}>
+          ▶ Go Live
+        </button>
+      )}
+
       {/* live preview */}
       <div className="sp-preview" style={{ background: preset.bg, color: preset.fg }}>
         {displayVerse ? (
           <>
-            <p className="sp-preview-g" style={{ fontSize: Math.min(displaySettings.fontSize, 26), fontFamily: 'var(--gurmukhi)' }}>{gText}</p>
-            {trans && <p className="sp-preview-t" style={{ fontSize: Math.min(displaySettings.transSize, 14), color: preset.sub }}>{trans}</p>}
+            <p className="sp-preview-g" style={{ fontSize: 28, fontFamily: 'var(--gurmukhi)' }}>{gText}</p>
+            {trans && <p className="sp-preview-t" style={{ fontSize: 14, color: preset.sub }}>{trans}</p>}
           </>
         ) : (
           <p className="sp-preview-empty" style={{ color: preset.sub }}>Select a verse below</p>
