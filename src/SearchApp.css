@@ -307,9 +307,10 @@
 .sa-card:hover { border-color: var(--accent-border); }
 
 .sa-card-g {
-  font-size: 16px;
+  font-family: var(--gurmukhi);
+  font-size: 18px;
   color: var(--text-h);
-  line-height: 1.6;
+  line-height: 1.7;
   margin-bottom: 8px;
   word-break: break-word;
 }
@@ -340,6 +341,144 @@
 
 .sa-card-meta span:first-child::before { display: none; }
 
+/* ─── input row (input + keyboard toggle) ──────────────────────────────────── */
+
+.sa-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.sa-input-row .sa-input-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.sa-kbd-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.sa-kbd-toggle:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.sa-kbd-toggle.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── gurmukhi keyboard ────────────────────────────────────────────────────── */
+
+.sa-kbd {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: kbdSlide 0.18s ease both;
+}
+
+@keyframes kbdSlide {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.sa-kbd-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sa-kbd-group-label {
+  font-size: 10px;
+  color: var(--text);
+  opacity: 0.45;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.sa-kbd-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.sa-kbd-key {
+  font-family: var(--gurmukhi);
+  font-size: 18px;
+  line-height: 1;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-h);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s, color 0.1s, transform 0.07s;
+  user-select: none;
+}
+
+.sa-kbd-key:hover  { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+.sa-kbd-key:active { transform: scale(0.92); }
+
+.sa-kbd-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.sa-kbd-space {
+  flex: 1;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  user-select: none;
+}
+
+.sa-kbd-space:hover { background: var(--accent-dim); border-color: var(--accent-border); }
+
+.sa-kbd-del {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-h);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+  user-select: none;
+}
+
+.sa-kbd-del:hover { background: rgba(255,94,94,0.12); border-color: rgba(255,94,94,0.4); color: var(--danger); }
+
 /* ─── responsive ───────────────────────────────────────────────────────────── */
 
 @media (max-width: 520px) {
@@ -348,4 +487,6 @@
   .sa-results { padding: 0 14px 24px; }
   .sa-net-label { display: none; }
   .sa-input { font-size: 15px; }
+  .sa-kbd-key { min-width: 34px; height: 34px; font-size: 16px; }
+  .sa-kbd { padding: 10px; gap: 10px; }
 }

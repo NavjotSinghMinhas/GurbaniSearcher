@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Gurmukhi:wght@400;500;600&display=swap');
+
 :root {
   --bg:            #080611;
   --surface:       #110d1e;
@@ -11,7 +13,8 @@
   --accent-border: rgba(170, 59, 255, 0.35);
   --danger:        #ff5e5e;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --sans:     system-ui, 'Segoe UI', Roboto, sans-serif;
+  --gurmukhi: 'Noto Sans Gurmukhi', system-ui, sans-serif;
 
   font: 16px/1.5 var(--sans);
   color: var(--text);
