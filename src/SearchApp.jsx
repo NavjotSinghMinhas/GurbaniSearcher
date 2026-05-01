@@ -687,9 +687,8 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, isBroadcasting,
         </div>
       </div>
 
-      {/* send-to-broadcast is the primary action */}
-      <button className="sp-broadcast-btn" onClick={onSendToBroadcast}>
-        {isBroadcasting ? '↩ Replace Broadcast' : '▶ Send to Broadcast'}
+      <button className="sp-broadcast-btn sp-go-live-btn" onClick={onSendToBroadcast}>
+        ▶ Send to Broadcast
       </button>
 
       <div className="sp-verses sp-verses-preview">
@@ -733,26 +732,25 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
     <aside className="sa-panel sa-bcast-panel" onClick={onFocus}>
 
       <div className="sp-header">
-        <button
-          className={`sp-live-btn${isLive ? ' live' : ''}`}
-          onClick={isLive ? onStop : onResume}
-          title={isLive ? 'Stop broadcasting' : 'Resume broadcasting'}
-        />
+        {isLive && (
+          <button
+            className="sp-live-btn live"
+            onClick={onStop}
+            title="Stop broadcasting"
+          />
+        )}
         <div className="sp-meta">
           {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
-        </div>
-        <div className="sp-actions">
-          <button className="sp-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
-          <button className="sp-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
-          {!isLive && <button className="sp-btn" onClick={onClose} title="Close panel"><IconX /></button>}
         </div>
       </div>
 
       {!isLive && (
         <button className="sp-broadcast-btn sp-go-live-btn" onClick={onResume}>
-          ▶ Go Live
+          ▶ Send to Broadcast
         </button>
       )}
+
+      {isLive && <>
 
       {/* live preview */}
       <div className="sp-preview" style={{ background: preset.bg, color: preset.fg }}>
@@ -766,8 +764,15 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
         )}
       </div>
 
-      {/* display controls — only visible on broadcast panel */}
+      {/* display controls */}
       <div className="sp-controls">
+        <div className="sp-ctrl-row">
+          <span className="sp-ctrl-label">Screen</span>
+          <div className="sp-ctrl-group">
+            <button className="sp-ctrl-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
+            <button className="sp-ctrl-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
+          </div>
+        </div>
         <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Gurmukhi</span>
           <div className="sp-ctrl-group">
@@ -806,6 +811,8 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
           </div>
         </div>
       </div>
+
+      </>}
 
       {/* verse list */}
       <div className="sp-verses">
