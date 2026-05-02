@@ -58,10 +58,12 @@ export function DownloadScreen({ progress, bytesDownloaded, totalBytes, speed })
     return () => clearInterval(id)
   }, [])
 
-  const pct       = Math.round(progress * 100)
+  const known     = totalBytes > 0
+  const pct       = known ? Math.round(progress * 100) : 0
   const tip       = TIPS[tipIndex]
   const speedStr  = fmtSpeed(speed)
-  const etaStr    = fmtEta(totalBytes - bytesDownloaded, speed)
+  const etaStr    = known ? fmtEta(totalBytes - bytesDownloaded, speed) : null
+  const active    = bytesDownloaded > 0
 
   return (
     <div className="fullscreen-screen">
@@ -75,18 +77,21 @@ export function DownloadScreen({ progress, bytesDownloaded, totalBytes, speed })
         <div className="dl-progress-box">
           <p className="dl-progress-label">Setting up for offline use…</p>
           <div className="dl-progress-track">
-            <div className="dl-progress-fill" style={{ width: `${pct}%` }} />
+            {known
+              ? <div className="dl-progress-fill" style={{ width: `${pct}%` }} />
+              : <div className={`dl-progress-fill dl-progress-indeterminate${active ? '' : ' dl-progress-pulse'}`} />
+            }
           </div>
           <div className="dl-progress-meta">
             <span>
-              {totalBytes > 0
+              {known
                 ? `${fmt(bytesDownloaded)} of ${fmt(totalBytes)}`
-                : 'Starting download…'}
+                : active ? fmt(bytesDownloaded) + ' downloaded…' : 'Starting download…'}
             </span>
             <span className="dl-speed-group">
               {speedStr && <span className="dl-speed">{speedStr}</span>}
               {etaStr   && <span className="dl-eta">{etaStr}</span>}
-              <span className="dl-pct">{pct}%</span>
+              {known    && <span className="dl-pct">{pct}%</span>}
             </span>
           </div>
         </div>

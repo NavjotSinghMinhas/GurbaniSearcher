@@ -89,6 +89,23 @@
   box-shadow: 0 0 14px var(--accent-glow);
 }
 
+@keyframes dl-slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+@keyframes dl-pulse {
+  0%, 100% { opacity: 0.4; }
+  50%       { opacity: 1; }
+}
+.dl-progress-indeterminate {
+  width: 30%;
+  animation: dl-slide 1.4s ease-in-out infinite;
+}
+.dl-progress-pulse {
+  width: 30%;
+  animation: dl-pulse 1.2s ease-in-out infinite;
+}
+
 .dl-progress-meta {
   display: flex;
   justify-content: space-between;
