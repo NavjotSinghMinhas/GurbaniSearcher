@@ -42,12 +42,6 @@ export function useGurbaniData() {
       const response = await fetch(DATA_URL)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-      // Detect Git LFS pointer served instead of real file (GitHub Pages + LFS)
-      const preview = await response.clone().text().then(t => t.slice(0, 20))
-      if (preview.startsWith('version https://git-')) {
-        throw new Error('Data file is a Git LFS pointer — the real file is not hosted here. Re-upload the data file outside of Git LFS.')
-      }
-
       const total = parseInt(response.headers.get('content-length') || '0', 10)
       setTotalBytes(total)
 
@@ -58,10 +52,20 @@ export function useGurbaniData() {
       let received = 0
       const samples = []
       let lastSpeedTick = 0
+      let firstChunk = true
       try {
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
+          // Detect LFS pointer on the first chunk without buffering the whole file
+          if (firstChunk) {
+            firstChunk = false
+            const preview = new TextDecoder().decode(value.slice(0, 20))
+            if (preview.startsWith('version https://git-')) {
+              await writable.abort()
+              throw new Error('Data file is a Git LFS pointer — host the file outside of Git LFS.')
+            }
+          }
           await writable.write(value)
           received += value.length
 
