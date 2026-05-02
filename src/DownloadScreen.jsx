@@ -79,7 +79,7 @@ export function DownloadScreen({ progress, bytesDownloaded, totalBytes, speed })
           <div className="dl-progress-track">
             {known
               ? <div className="dl-progress-fill" style={{ width: `${pct}%` }} />
-              : <div className={`dl-progress-fill dl-progress-indeterminate${active ? '' : ' dl-progress-pulse'}`} />
+              : <div className="dl-progress-fill dl-progress-indeterminate" />
             }
           </div>
           <div className="dl-progress-meta">
