@@ -19,13 +19,13 @@ const MODES = [
   { id: 'firstLetters', label: 'First Letters', hint: 'Finds verses containing those consecutive first letters anywhere — sorted by position' },
   { id: 'word',         label: 'Whole Word',    hint: 'Type an exact Gurmukhi word in Gurmukhi script or transliteration — e.g. ਨਾਮੁ or nwmu' },
   { id: 'anywhere',     label: 'Anywhere',      hint: 'Find any verse containing this substring — type in Gurmukhi or transliteration' },
+  { id: 'fuzzy',        label: 'Fuzzy',         hint: 'Matches verses where most words are similar — handles slight spelling or ending differences' },
   { id: 'english',      label: 'English',       hint: 'Search across all English translations' },
 ]
 
 const KEYBOARD_LAYOUT = [
   { label: 'ਵਰਣਮਾਲਾ · Consonants', chars: ['ੳ','ਅ','ੲ','ਸ','ਹ','ਕ','ਖ','ਗ','ਘ','ਙ','ਚ','ਛ','ਜ','ਝ','ਞ','ਟ','ਠ','ਡ','ਢ','ਣ','ਤ','ਥ','ਦ','ਧ','ਨ','ਪ','ਫ','ਬ','ਭ','ਮ','ਯ','ਰ','ਲ','ਵ','ੜ','ਸ਼','ਖ਼','ਗ਼','ਜ਼','ਫ਼','ਲ਼'] },
   { label: 'ਲਗਾਂ · Vowel signs',   chars: ['ਾ','ਿ','ੀ','ੁ','ੂ','ੇ','ੈ','ੋ','ੌ','ੰ','ੱ','ਂ'] },
-  { label: 'ਖ਼ਾਸ · Special',       chars: ['ੴ','ਃ'] },
 ]
 
 /* ── helpers ─────────────────────────────────────────────────── */
@@ -44,6 +44,18 @@ function runSearch(verses, query, mode) {
       if (idx !== -1) scored.push({ v, idx })
     }
     return scored.sort((a, b) => a.idx - b.idx).slice(0, 50).map(x => x.v)
+  }
+  if (mode === 'fuzzy') {
+    const qWords = q.split(/\s+/).map(cleanWord).filter(w => w.length >= 2)
+    if (qWords.length === 0) return []
+    const minMatch = Math.max(1, Math.ceil(qWords.length * 0.5))
+    const scored = []
+    for (const v of verses) {
+      const vWords = v.Gurmukhi.split(/\s+/).map(cleanWord).filter(w => w.length >= 2)
+      const matches = wordMatchCount(qWords, vWords)
+      if (matches >= minMatch) scored.push({ v, matches })
+    }
+    return scored.sort((a, b) => b.matches - a.matches).slice(0, 50).map(x => x.v)
   }
   const results = []
   for (const v of verses) {
@@ -125,7 +137,7 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
     if (hasCtx) {
       if (v.ID === contextVerse.ID)  { req = 0.25; inertia = 3; minMatch = 1 }
       else if (ctxSet?.has(v.ID))    { req = 0.50; inertia = 1; minMatch = 2 }
-      else                            { req = 0.75;              minMatch = 2 }
+      else                            { req = 0.75;              minMatch = 3 }
     }
     if (conf < req) continue
 
@@ -205,8 +217,9 @@ export function SearchApp({ data }) {
   const channelRef         = useRef(null)
   const kirtanRecRef       = useRef(null)
   const kirtanModeRef      = useRef('off')
-  const kirtanApprovedRef  = useRef(false)
-  const kirtanVerseWordsRef = useRef(null)   // pre-split verse words, built once on first start
+  const kirtanApprovedRef       = useRef(false)
+  const kirtanVerseWordsRef     = useRef(null)   // pre-split verse words, built once on first start
+  const kirtanShabadCandidateRef = useRef(null)  // pending shabad switch { shabadId, verse, count }
   const debounceRef        = useRef(null)
   const inputRef           = useRef(null)
   const bcastDvRef         = useRef(null)
@@ -359,12 +372,25 @@ export function SearchApp({ data }) {
       if (approved) {
         const svs = bcastSvsRef.current
         if (svs.length > 0 && svs.some(v => v.ID === match.ID)) {
-          // Stay in current shabad — just navigate to matched verse
+          // Match is within the current shabad — navigate and clear any pending switch
+          kirtanShabadCandidateRef.current = null
           setBcastDv(match)
           pushBroadcast(match, displaySettingsRef.current, true)
         } else {
-          // Different shabad detected — switch broadcast
-          startBroadcast(match, getShabadVerses(match), true)
+          // Different shabad — require 3 consecutive wins before committing.
+          // A single wrong recognition resets the counter, preventing spurious switches.
+          const shabadId = match.Shabads?.[0]?.ShabadID
+          const prev = kirtanShabadCandidateRef.current
+          if (prev?.shabadId === shabadId) {
+            prev.count++
+            prev.verse = match
+            if (prev.count >= 3) {
+              kirtanShabadCandidateRef.current = null
+              startBroadcast(match, getShabadVerses(match), true)
+            }
+          } else {
+            kirtanShabadCandidateRef.current = { shabadId, verse: match, count: 1 }
+          }
         }
       }
     }
@@ -382,6 +408,7 @@ export function SearchApp({ data }) {
     kirtanRecRef.current?.stop()
     kirtanRecRef.current = null
     kirtanApprovedRef.current = false
+    kirtanShabadCandidateRef.current = null
     setKirtanMode('off')
     setKirtanCandidate(null)
     setKirtanTranscript('')
