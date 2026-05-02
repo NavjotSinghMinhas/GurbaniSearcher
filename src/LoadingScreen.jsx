@@ -44,6 +44,15 @@ export function LoadingScreen({ dataReady, onReady }) {
       const text   = await file.text()
 
       if (cancelled) return
+
+      if (text.startsWith('version https://git-')) {
+        // Stale LFS pointer cached — wipe and reload so it re-downloads the real file
+        try { await root.removeEntry('gurbani.min.json') }      catch { /* ignore */ }
+        try { await root.removeEntry('gurbani.min.json.done') } catch { /* ignore */ }
+        window.location.reload()
+        return
+      }
+
       onReady(JSON.parse(text))
     }
 
