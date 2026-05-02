@@ -73,6 +73,7 @@
 }
 
 .dl-progress-track {
+  position: relative;
   width: 100%;
   height: 6px;
   background: var(--surface-2);
@@ -90,19 +91,21 @@
 }
 
 @keyframes dl-slide {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(400%); }
+  0%   { left: -35%; }
+  100% { left: 100%; }
 }
 @keyframes dl-pulse {
-  0%, 100% { opacity: 0.4; }
+  0%, 100% { opacity: 0.3; }
   50%       { opacity: 1; }
 }
 .dl-progress-indeterminate {
-  width: 30%;
+  position: absolute;
+  width: 35%;
   animation: dl-slide 1.4s ease-in-out infinite;
 }
 .dl-progress-pulse {
-  width: 30%;
+  position: absolute;
+  width: 35%;
   animation: dl-pulse 1.2s ease-in-out infinite;
 }
 
