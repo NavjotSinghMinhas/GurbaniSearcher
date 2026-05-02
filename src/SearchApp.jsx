@@ -138,12 +138,24 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
   const hasCtx = contextVerse != null
   const ctxSet = contextShabadVerses ? new Set(contextShabadVerses.map(v => v.ID)) : null
 
+  // Adjacent verse IDs (±1 in shabad) get a looser threshold — a single mid-verse word
+  // is enough when the kirtani transitions and the first word isn't caught cleanly.
+  const adjacentIds = new Set()
+  if (hasCtx && contextShabadVerses?.length > 0) {
+    const idx = contextShabadVerses.findIndex(v => v.ID === contextVerse.ID)
+    if (idx !== -1) {
+      if (idx > 0)                                adjacentIds.add(contextShabadVerses[idx - 1].ID)
+      if (idx < contextShabadVerses.length - 1)   adjacentIds.add(contextShabadVerses[idx + 1].ID)
+    }
+  }
+
   function scoreVerse(v) {
     let req = 0.60, inertia = 0, minMatch = 2
     if (hasCtx) {
-      if (v.ID === contextVerse.ID)  { req = 0.25; inertia = 3; minMatch = 1 }
-      else if (ctxSet?.has(v.ID))    { req = 0.50; inertia = 1; minMatch = 2 }
-      else                            { req = 0.75;              minMatch = 3 }
+      if (v.ID === contextVerse.ID)    { req = 0.25; inertia = 3; minMatch = 1 }
+      else if (adjacentIds.has(v.ID))  { req = 0.35; inertia = 2; minMatch = 1 }
+      else if (ctxSet?.has(v.ID))      { req = 0.50; inertia = 1; minMatch = 2 }
+      else                              { req = 0.75;              minMatch = 3 }
     }
     if (conf < req) return null
     const matches = wordMatchCount(tWords, verseWordsMap.get(v.ID) || [])
