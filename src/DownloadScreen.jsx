@@ -86,7 +86,7 @@ export function DownloadScreen({ progress, bytesDownloaded, totalBytes, speed })
             <span>
               {known
                 ? `${fmt(bytesDownloaded)} of ${fmt(totalBytes)}`
-                : active ? fmt(bytesDownloaded) + ' downloaded…' : 'Starting download…'}
+                : active ? `${fmt(bytesDownloaded)} downloaded` : 'Starting download…'}
             </span>
             <span className="dl-speed-group">
               {speedStr && <span className="dl-speed">{speedStr}</span>}

@@ -90,15 +90,22 @@
 }
 
 @keyframes dl-shimmer {
-  0%   { background-position: 200% center; }
-  100% { background-position: -200% center; }
+  0%   { left: -45%; }
+  100% { left: 110%; }
+}
+.dl-progress-track {
+  position: relative;
 }
 .dl-progress-indeterminate {
-  width: 100%;
-  background: linear-gradient(90deg, #7e14ff 25%, #c46eff 50%, #7e14ff 75%);
-  background-size: 200% 100%;
-  animation: dl-shimmer 1.5s linear infinite;
+  position: absolute;
+  top: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, #c46eff, #7e14ff, #c46eff, transparent);
+  border-radius: 6px;
+  animation: dl-shimmer 1.6s ease-in-out infinite;
   transition: none;
+  box-shadow: none;
 }
 
 .dl-progress-meta {
