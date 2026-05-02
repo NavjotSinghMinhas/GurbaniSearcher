@@ -2,7 +2,9 @@ import { useState, useEffect } from 'react'
 
 const OPFS_FILE = 'gurbani.min.json'
 const OPFS_DONE = 'gurbani.min.json.done'
-const DATA_URL  = '/data/gurbani.min.json'
+const DATA_URL  = import.meta.env.DEV
+  ? '/data/gurbani.min.json'
+  : 'https://media.githubusercontent.com/media/NavjotSinghMinhas/GurbaniSearcher/main/public/data/gurbani.min.json'
 
 // Module-level guard: prevents concurrent downloads from React StrictMode's
 // double-mount. Atomic because JS is single-threaded with no await between
@@ -39,6 +41,12 @@ export function useGurbaniData() {
 
       const response = await fetch(DATA_URL)
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
+
+      // Detect Git LFS pointer served instead of real file (GitHub Pages + LFS)
+      const preview = await response.clone().text().then(t => t.slice(0, 20))
+      if (preview.startsWith('version https://git-')) {
+        throw new Error('Data file is a Git LFS pointer — the real file is not hosted here. Re-upload the data file outside of Git LFS.')
+      }
 
       const total = parseInt(response.headers.get('content-length') || '0', 10)
       setTotalBytes(total)
