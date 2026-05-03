@@ -116,13 +116,6 @@ function wordMatchCount(tWords, vWords) {
 //   confirmed, same verse:   ≥0.25, need ≥1 word match  (repeating is fine)
 //   confirmed, same shabad:  ≥0.50, need ≥2 word matches
 //   confirmed, diff shabad:  ≥0.75, need ≥2 word matches
-//
-// Tiered search: Tier 1 (current verse) → Tier 2 (current shabad) → Tier 3 (all 142k verses).
-// The full scan only runs for shabad switches and is throttled since those require
-// 3 consecutive wins to act on anyway.
-let _lastFullScanTs = 0
-const FULL_SCAN_INTERVAL = 250  // ms — shabad switches need 3 wins; 4 scans/sec is plenty
-
 function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVerses, verseWordsMap) {
   if (!speechResults || speechResults.length === 0) return null
 
@@ -137,59 +130,24 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
 
   const hasCtx = contextVerse != null
   const ctxSet = contextShabadVerses ? new Set(contextShabadVerses.map(v => v.ID)) : null
+  let best = null, bestScore = 0
 
-  // Adjacent verse IDs (±1 in shabad) get a looser threshold — a single mid-verse word
-  // is enough when the kirtani transitions and the first word isn't caught cleanly.
-  const adjacentIds = new Set()
-  if (hasCtx && contextShabadVerses?.length > 0) {
-    const idx = contextShabadVerses.findIndex(v => v.ID === contextVerse.ID)
-    if (idx !== -1) {
-      if (idx > 0)                                adjacentIds.add(contextShabadVerses[idx - 1].ID)
-      if (idx < contextShabadVerses.length - 1)   adjacentIds.add(contextShabadVerses[idx + 1].ID)
-    }
-  }
-
-  function scoreVerse(v) {
+  for (const v of verses) {
     let req = 0.60, inertia = 0, minMatch = 2
     if (hasCtx) {
-      if (v.ID === contextVerse.ID)    { req = 0.25; inertia = 3; minMatch = 1 }
-      else if (adjacentIds.has(v.ID))  { req = 0.35; inertia = 2; minMatch = 1 }
-      else if (ctxSet?.has(v.ID))      { req = 0.50; inertia = 1; minMatch = 2 }
-      else                              { req = 0.75;              minMatch = 3 }
+      if (v.ID === contextVerse.ID)  { req = 0.25; inertia = 3; minMatch = 1 }
+      else if (ctxSet?.has(v.ID))    { req = 0.50; inertia = 1; minMatch = 2 }
+      else                            { req = 0.75;              minMatch = 3 }
     }
-    if (conf < req) return null
+    if (conf < req) continue
+
     const matches = wordMatchCount(tWords, verseWordsMap.get(v.ID) || [])
-    if (matches < minMatch) return null
-    return matches + inertia
+    if (matches < minMatch) continue
+
+    const score = matches + inertia
+    if (score > bestScore) { bestScore = score; best = v }
   }
 
-  // Tier 1: current verse — asthai repetition and staying on the same line
-  if (hasCtx) {
-    if (scoreVerse(contextVerse) !== null) return contextVerse
-  }
-
-  // Tier 2: rest of current shabad — navigating forward/backward or jumping to asthai
-  if (contextShabadVerses?.length > 0) {
-    let best = null, bestScore = 0
-    for (const v of contextShabadVerses) {
-      if (v.ID === contextVerse?.ID) continue
-      const s = scoreVerse(v)
-      if (s !== null && s > bestScore) { bestScore = s; best = v }
-    }
-    if (best) return best
-  }
-
-  // Tier 3: full scan for shabad switches — throttled, already requires 3 consecutive wins
-  const now = Date.now()
-  if (hasCtx && now - _lastFullScanTs < FULL_SCAN_INTERVAL) return null
-  _lastFullScanTs = now
-
-  let best = null, bestScore = 0
-  for (const v of verses) {
-    if (ctxSet?.has(v.ID)) continue
-    const s = scoreVerse(v)
-    if (s !== null && s > bestScore) { bestScore = s; best = v }
-  }
   return best
 }
 
