@@ -23,6 +23,40 @@ const MODES = [
   { id: 'english',      label: 'English',       hint: 'Search across all English translations' },
 ]
 
+// Maryada (tradition) — each Banis_Shabad row carries existsSGPC / existsTaksal /
+// existsBuddhaDal / existsMedium flags. Banis like Rehras Sahib differ across
+// maryadas; without filtering we'd show the union of all of them.
+const MARYADAS = [
+  { id: 'SGPC',      flag: 'existsSGPC',      label: 'SGPC' },
+  { id: 'Taksal',    flag: 'existsTaksal',    label: 'Taksal' },
+  { id: 'BuddhaDal', flag: 'existsBuddhaDal', label: 'Buddha Dal' },
+  { id: 'Medium',    flag: 'existsMedium',    label: 'Medium' },
+]
+const MARYADA_KEY = 'gurbani-maryada'
+const DEFAULT_MARYADA = 'SGPC'
+
+// Nitnem baanis surfaced at the top of the Baanis sidebar in this order
+const NITNEM_BANI_IDS = [2, 4, 6, 7, 9, 10, 21, 23, 24]
+const NITNEM_LABELS = {
+  2:  'Japji Sahib',
+  4:  'Jaap Sahib',
+  6:  'Tav Prasad Savaiye',
+  7:  'Tav Prasad Savaiye (Deenan)',
+  9:  'Chaupai Sahib',
+  10: 'Anand Sahib',
+  21: 'Rehras Sahib',
+  23: 'Sohila Sahib',
+  24: 'Ardas',
+  31: 'Sukhmani Sahib',
+  27: 'Barah Maha (Manjh)',
+  36: 'Dukh Bhanjani Sahib',
+  11: 'Lavaan',
+  29: 'Akal Ustat',
+  90: 'Asa Di Vaar',
+  3:  'Shabad Hazare',
+  5:  'Shabad Hazare Patshahi 10',
+}
+
 const KEYBOARD_LAYOUT = [
   { label: 'ਵਰਣਮਾਲਾ · Consonants', chars: ['ੳ','ਅ','ੲ','ਸ','ਹ','ਕ','ਖ','ਗ','ਘ','ਙ','ਚ','ਛ','ਜ','ਝ','ਞ','ਟ','ਠ','ਡ','ਢ','ਣ','ਤ','ਥ','ਦ','ਧ','ਨ','ਪ','ਫ','ਬ','ਭ','ਮ','ਯ','ਰ','ਲ','ਵ','ੜ','ਸ਼','ਖ਼','ਗ਼','ਜ਼','ਫ਼','ਲ਼'] },
   { label: 'ਲਗਾਂ · Vowel signs',   chars: ['ਾ','ਿ','ੀ','ੁ','ੂ','ੇ','ੈ','ੋ','ੌ','ੰ','ੱ','ਂ'] },
@@ -191,13 +225,21 @@ export function SearchApp({ data }) {
   const [pvVerse,   setPvVerse]   = useState(null)   // anchor verse (from search click)
   const [pvSvs,     setPvSvs]     = useState([])     // shabad verses shown in preview
   const [pvDv,      setPvDv]      = useState(null)   // currently highlighted verse in preview
+  const [pvBani,    setPvBani]    = useState(null)   // bani meta when preview is showing a whole bani
+  const [pvSectionLabels, setPvSectionLabels] = useState(null)  // Map<rowId, label> for bani section dividers
   const [showPreview, setShowPreview] = useState(false)
+
+  /* ── BAANIS SIDEBAR ────────────────────────────────────────── */
+  const [showBanis, setShowBanis] = useState(false)
+  const [maryada,   setMaryada]   = useState(() => localStorage.getItem(MARYADA_KEY) || DEFAULT_MARYADA)
 
   /* ── BROADCAST PANEL ───────────────────────────────────────── */
   const [bcastVerse, setBcastVerse] = useState(null)
   const [bcastSvs,   setBcastSvs]   = useState([])
   const [bcastDv,    setBcastDv]    = useState(null)
   const [bcastLive,  setBcastLive]  = useState(false) // true = actively sending to display tab
+  const [bcastBani,  setBcastBani]  = useState(null)  // bani meta when broadcasting a whole bani
+  const [bcastSectionLabels, setBcastSectionLabels] = useState(null)
 
   const bcastPanelOpen = bcastVerse !== null  // panel is visible (live or stopped)
   const isBroadcasting = bcastLive            // actively sending to display tab
@@ -252,6 +294,72 @@ export function SearchApp({ data }) {
     return map
   }, [verses])
 
+  /* ── bani index ────────────────────────────────────────────── */
+  /* For each Bani: ordered list of Verses (Custom/header rows skipped), wrapped
+     with a unique __rowId so duplicate verses (e.g. refrains in Japji) are still
+     distinct rows. Filtered to the selected maryada — Banis_Shabad lumps SGPC,
+     Taksal, Buddha Dal and Medium variants together; reading the union shows
+     verses that don't belong to the user's tradition. Bookmark seqs are looked
+     up against the unfiltered row table so dividers still anchor to the first
+     surviving verse of each section even when some rows are filtered out. */
+  const baniInfo = useMemo(() => {
+    const banisList     = data?.Banis           || []
+    const banisShabad   = data?.Banis_Shabad    || []
+    const banisBookmark = data?.Banis_Bookmarks || []
+    const flag = (MARYADAS.find(m => m.id === maryada) || MARYADAS[0]).flag
+    // Full row → seq lookup so bookmarks pointing at filtered-out rows still
+    // resolve to a valid Seq and attach to the next surviving verse.
+    const seqByRowId = new Map(banisShabad.map(r => [r.ID, r.Seq]))
+    const byBani = new Map()
+    for (const b of banisList) byBani.set(b.ID, { meta: b, lines: [], bookmarks: [] })
+    for (const row of banisShabad) {
+      if (!row[flag]) continue
+      const bid = row.Bani?.ID
+      const entry = byBani.get(bid)
+      if (entry) entry.lines.push(row)
+    }
+    for (const bm of banisBookmark) {
+      const entry = byBani.get(bm.Bani)
+      if (entry) entry.bookmarks.push(bm)
+    }
+    for (const entry of byBani.values()) {
+      entry.lines.sort((a, b) => a.Seq - b.Seq)
+      const bms = entry.bookmarks
+        .map(bm => ({ seq: seqByRowId.get(bm.BaniShabadID) ?? -1, gurmukhi: bm.Gurmukhi, sortSeq: bm.Seq }))
+        .filter(bm => bm.seq !== -1)
+        .sort((a, b) => a.seq - b.seq || a.sortSeq - b.sortSeq)
+      entry.verses = []
+      entry.sectionLabels = new Map()
+      let bmIdx = 0
+      let pendingLabel = null
+      for (const line of entry.lines) {
+        while (bmIdx < bms.length && bms[bmIdx].seq <= line.Seq) {
+          pendingLabel = bms[bmIdx].gurmukhi
+          bmIdx++
+        }
+        if (line.Verse) {
+          const wrapped = { ...line.Verse, __rowId: line.ID }
+          entry.verses.push(wrapped)
+          if (pendingLabel) { entry.sectionLabels.set(line.ID, pendingLabel); pendingLabel = null }
+        }
+      }
+      // Drop bookmarks for single-verse sections — a divider above an isolated
+      // verse just adds visual noise without aiding navigation.
+      const positions = []
+      for (let i = 0; i < entry.verses.length; i++) {
+        const rowId = entry.verses[i].__rowId ?? entry.verses[i].ID
+        if (entry.sectionLabels.has(rowId)) positions.push({ idx: i, rowId })
+      }
+      for (let j = 0; j < positions.length; j++) {
+        const cur  = positions[j]
+        const next = positions[j + 1]
+        const size = (next ? next.idx : entry.verses.length) - cur.idx
+        if (size <= 1) entry.sectionLabels.delete(cur.rowId)
+      }
+    }
+    return byBani
+  }, [data, maryada])
+
   /* ── BroadcastChannel ──────────────────────────────────────── */
   useEffect(() => {
     const ch = new BroadcastChannel(CHANNEL_NAME)
@@ -267,7 +375,9 @@ export function SearchApp({ data }) {
   function pushBroadcast(anchorVerse, settings, voiceActive = false, overrideSvs = null) {
     const svs = overrideSvs ?? bcastSvsRef.current
     const count = settings.verseCount || 1
-    const idx = svs.findIndex(v => v.ID === anchorVerse?.ID)
+    // Use indexOf so duplicate verses (same ID, different occurrence) resolve to the
+    // exact row the user selected, not just the first match in the list.
+    const idx = anchorVerse ? svs.indexOf(anchorVerse) : -1
     const broadcastVerses = idx !== -1
       ? svs.slice(idx, Math.min(idx + count, svs.length))
       : anchorVerse ? [anchorVerse] : []
@@ -316,7 +426,7 @@ export function SearchApp({ data }) {
       if (bcastSvsRef.current.length > 0) {
         const svs         = bcastSvsRef.current
         const count       = displaySettingsRef.current.verseCount || 1
-        const idx         = svs.findIndex(v => v.ID === bcastDvRef.current?.ID)
+        const idx         = bcastDvRef.current ? svs.indexOf(bcastDvRef.current) : -1
         const currentPage = Math.floor(idx / count)
         const totalPages  = Math.ceil(svs.length / count)
         const nextPage    = Math.max(0, Math.min(totalPages - 1, currentPage + dir))
@@ -331,7 +441,7 @@ export function SearchApp({ data }) {
       } else if (showPreview) {
         setPvDv(prev => {
           const svs  = pvSvs
-          const idx  = svs.findIndex(v => v.ID === prev?.ID)
+          const idx  = prev ? svs.indexOf(prev) : -1
           const next = Math.max(0, Math.min(svs.length - 1, idx + dir))
           return svs[next] ?? prev
         })
@@ -371,11 +481,16 @@ export function SearchApp({ data }) {
       setKirtanCandidate(match)
       if (approved) {
         const svs = bcastSvsRef.current
-        if (svs.length > 0 && svs.some(v => v.ID === match.ID)) {
+        // For banis, bcastSvs holds wrapped rows ({ ...Verse, __rowId }); the
+        // kirtan match comes from the raw `verses` array. Look up the wrapped
+        // row by ID so bcastDv stays reference-equal to a bcastSvs entry —
+        // otherwise the active highlight, indexOf, and arrow-key nav all break.
+        const svsMatch = svs.find(v => v.ID === match.ID)
+        if (svsMatch) {
           // Match is within the current shabad — navigate and clear any pending switch
           kirtanShabadCandidateRef.current = null
-          setBcastDv(match)
-          pushBroadcast(match, displaySettingsRef.current, true)
+          setBcastDv(svsMatch)
+          pushBroadcast(svsMatch, displaySettingsRef.current, true)
         } else {
           // Different shabad — require 3 consecutive wins before committing.
           // A single wrong recognition resets the counter, preventing spurious switches.
@@ -398,10 +513,20 @@ export function SearchApp({ data }) {
     R.onend   = () => { if (kirtanModeRef.current !== 'off') try { R.start() } catch { /* ok */ } }
     R.start()
     kirtanRecRef.current = R
-    kirtanApprovedRef.current = false
-    setKirtanMode('listening')
     setKirtanCandidate(null)
     setKirtanTranscript('')
+    // If something is already being broadcast, the user has already chosen the
+    // shabad/bani — skip the listening + confirmation phase, lock onto that as
+    // the context, and let kirtan auto-navigate within it. Cross-shabad
+    // switches still need the existing 3-consecutive-match safeguard.
+    if (bcastLiveRef.current && bcastDvRef.current) {
+      kirtanApprovedRef.current = true
+      setKirtanMode('auto')
+      pushBroadcast(bcastDvRef.current, displaySettingsRef.current, true)
+    } else {
+      kirtanApprovedRef.current = false
+      setKirtanMode('listening')
+    }
   }
 
   function stopKirtan() {
@@ -421,8 +546,20 @@ export function SearchApp({ data }) {
     if (!kirtanCandidate) return
     kirtanApprovedRef.current = true
     setKirtanMode('auto')
-    startBroadcast(kirtanCandidate, getShabadVerses(kirtanCandidate), true)
-    saveHistory(historyEntry(kirtanCandidate))
+    // If a bani is open in preview (or was last broadcast) and the recognized
+    // verse belongs to it, broadcast the whole bani (all pauris) as context —
+    // otherwise we'd scope down to a single sub-shabad, and every cross-pauri
+    // jump inside the bani would hit the "different shabad" 3-retry safeguard.
+    const openBani = pvBani || bcastBani
+    const baniEntry = openBani && baniInfo.get(openBani.ID)
+    const wrappedMatch = baniEntry?.verses.find(v => v.ID === kirtanCandidate.ID)
+    if (wrappedMatch) {
+      startBroadcast(wrappedMatch, baniEntry.verses, true, openBani, baniEntry.sectionLabels)
+      saveHistory(historyEntry(kirtanCandidate, openBani))
+    } else {
+      startBroadcast(kirtanCandidate, getShabadVerses(kirtanCandidate), true)
+      saveHistory(historyEntry(kirtanCandidate))
+    }
   }
 
   /* ── shabad helpers ────────────────────────────────────────── */
@@ -437,16 +574,52 @@ export function SearchApp({ data }) {
     setPvVerse(verse)
     setPvSvs(svs)
     setPvDv(verse)
+    setPvBani(null)
+    setPvSectionLabels(null)
     setShowPreview(true)
     focusedPanelRef.current = 'preview'
   }
 
   function openFromHistory(entry) {
+    // Bani entries reopen the whole bani — verse counts may differ from when
+    // the entry was saved (e.g. maryada changed), so re-derive from baniInfo.
+    if (entry.baniId && baniInfo.get(entry.baniId)?.verses.length > 0) {
+      openBani(entry.baniId)
+      return
+    }
     const verse = verses.find(v => v.ID === entry.verseId)
     if (!verse) return
     const svs = entry.shabadId && shabadIndex.has(entry.shabadId)
       ? shabadIndex.get(entry.shabadId) : [verse]
     setPvVerse(verse); setPvSvs(svs); setPvDv(verse); setShowPreview(true)
+    setPvBani(null); setPvSectionLabels(null)
+    focusedPanelRef.current = 'preview'
+  }
+
+  /* Switching maryada changes which verses belong to each bani, so any bani
+     currently rendered in the preview holds a now-stale verse list. Close it
+     and persist the choice; the user can re-open the bani to see the new view. */
+  function changeMaryada(m) {
+    setMaryada(m)
+    localStorage.setItem(MARYADA_KEY, m)
+    if (pvBani) {
+      setShowPreview(false)
+      setPvVerse(null); setPvSvs([]); setPvDv(null)
+      setPvBani(null); setPvSectionLabels(null)
+    }
+  }
+
+  /* Open an entire bani (Japji Sahib, Jaap Sahib, …) in the preview panel. */
+  function openBani(baniId) {
+    const entry = baniInfo.get(baniId)
+    if (!entry || entry.verses.length === 0) return
+    const first = entry.verses[0]
+    setPvVerse(first)
+    setPvSvs(entry.verses)
+    setPvDv(first)
+    setPvBani(entry.meta)
+    setPvSectionLabels(entry.sectionLabels)
+    setShowPreview(true)
     focusedPanelRef.current = 'preview'
   }
 
@@ -457,20 +630,33 @@ export function SearchApp({ data }) {
   }
 
   /* ── broadcast panel actions ───────────────────────────────── */
-  function startBroadcast(verse, svs, voiceActive = false) {
+  function startBroadcast(verse, svs, voiceActive = false, bani = null, sectionLabels = null) {
     setBcastVerse(verse)
     setBcastSvs(svs)
     setBcastDv(verse)
     setBcastLive(true)
+    setBcastBani(bani)
+    setBcastSectionLabels(sectionLabels)
     setShowPreview(false)
-    pushBroadcast(verse, displaySettingsRef.current, voiceActive, svs)
+    // If kirtan is listening for a candidate, the user has just chosen what to
+    // broadcast manually — promote straight to auto-navigate mode so kirtan
+    // tracks this shabad/bani without another confirmation step.
+    const willAutoVoice = voiceActive || kirtanModeRef.current === 'listening'
+    if (kirtanModeRef.current === 'listening') {
+      kirtanApprovedRef.current = true
+      setKirtanMode('auto')
+    }
+    pushBroadcast(verse, displaySettingsRef.current, willAutoVoice, svs)
   }
 
-  function historyEntry(verse) {
+  function historyEntry(verse, bani = null) {
     return {
       id: `${verse.ID}_${Date.now()}`, timestamp: Date.now(),
       verseId: verse.ID,
       shabadId: verse.Shabads?.[0]?.ShabadID,
+      baniId:       bani?.ID || null,
+      baniGurmukhi: bani ? toUnicode(bani.Gurmukhi) : null,
+      baniLabel:    bani ? (NITNEM_LABELS[bani.ID] || bani.Token) : null,
       gurmukhi: toUnicode(verse.Gurmukhi),
       source: verse.Source?.SourceEnglish,
       page: verse.PageNo,
@@ -481,8 +667,8 @@ export function SearchApp({ data }) {
   /* "Send to Broadcast" from preview panel — saves history (fresh search context) */
   function sendToBroadcast() {
     if (!pvDv) return
-    startBroadcast(pvDv, pvSvs, kirtanModeRef.current === 'auto')
-    saveHistory(historyEntry(pvVerse))
+    startBroadcast(pvDv, pvSvs, kirtanModeRef.current === 'auto', pvBani, pvSectionLabels)
+    saveHistory(historyEntry(pvVerse, pvBani))
   }
 
   /* stop live — panel stays open */
@@ -504,6 +690,8 @@ export function SearchApp({ data }) {
     setBcastSvs([])
     setBcastDv(null)
     setBcastLive(false)
+    setBcastBani(null)
+    setBcastSectionLabels(null)
   }
 
   function selectBcastVerse(verse) {
@@ -516,8 +704,13 @@ export function SearchApp({ data }) {
 
   /* ── history ───────────────────────────────────────────────── */
   function saveHistory(entry) {
+    // Bani entries dedup against the same bani; non-bani entries dedup against
+    // the same shabad. A bani and a shabad with the same id are NOT the same
+    // (the bani holds many shabads), so they coexist.
+    const keyOf = h => h.baniId ? `bani:${h.baniId}` : `shabad:${h.shabadId ?? 'none'}`
+    const ek = keyOf(entry)
     setSearchHistory(prev => {
-      const next = [entry, ...prev.filter(h => h.shabadId !== entry.shabadId)].slice(0, MAX_HISTORY)
+      const next = [entry, ...prev.filter(h => keyOf(h) !== ek)].slice(0, MAX_HISTORY)
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
       return next
     })
@@ -555,6 +748,7 @@ export function SearchApp({ data }) {
 
   /* layout class drives CSS grid columns */
   const layoutCls = ['sa-layout',
+    showBanis      && 'has-banis',
     showPreview    && 'has-preview',
     bcastPanelOpen && 'has-broadcast',
   ].filter(Boolean).join(' ')
@@ -565,6 +759,14 @@ export function SearchApp({ data }) {
       {/* ── header ── */}
       <header className="sa-header">
         <div className="sa-header-left">
+          <button
+            className={`sa-banis-toggle${showBanis ? ' active' : ''}`}
+            onClick={() => setShowBanis(v => !v)}
+            title={showBanis ? 'Hide baanis' : 'Open baanis'}
+          >
+            <IconBook />
+            <span>Baanis</span>
+          </button>
           <img src="/icon.svg" className="sa-logo" alt="" aria-hidden="true" />
           <span className="sa-title">Gurbani Search</span>
         </div>
@@ -594,6 +796,18 @@ export function SearchApp({ data }) {
       </header>
 
       <div className={layoutCls}>
+
+        {/* ── baanis sidebar (left) ── */}
+        {showBanis && (
+          <BaniSidebar
+            baniInfo={baniInfo}
+            activeBaniId={pvBani?.ID ?? null}
+            maryada={maryada}
+            onChangeMaryada={changeMaryada}
+            onSelectBani={openBani}
+            onClose={() => setShowBanis(false)}
+          />
+        )}
 
         {/* ── search column ── */}
         <div className="sa-main">
@@ -711,10 +925,12 @@ export function SearchApp({ data }) {
             verse={pvVerse}
             shabadVerses={pvSvs}
             displayVerse={pvDv}
+            bani={pvBani}
+            sectionLabels={pvSectionLabels}
             isBroadcasting={isBroadcasting}
             onSelectVerse={selectPvVerse}
             onSendToBroadcast={sendToBroadcast}
-            onClose={() => { setShowPreview(false); setPvVerse(null) }}
+            onClose={() => { setShowPreview(false); setPvVerse(null); setPvBani(null); setPvSectionLabels(null) }}
             onFocus={() => { focusedPanelRef.current = 'preview' }}
           />
         )}
@@ -725,6 +941,8 @@ export function SearchApp({ data }) {
             verse={bcastVerse}
             shabadVerses={bcastSvs}
             displayVerse={bcastDv}
+            bani={bcastBani}
+            sectionLabels={bcastSectionLabels}
             displaySettings={displaySettings}
             isLive={isBroadcasting}
             onSelectVerse={selectBcastVerse}
@@ -763,15 +981,29 @@ function VerseCard({ verse, isSelected, onClick }) {
 
 /* ── RecentItem ──────────────────────────────────────────────── */
 function RecentItem({ entry, onOpen, onDelete }) {
+  const isBani = !!entry.baniId
   return (
-    <div className="sa-rec-item">
+    <div className={`sa-rec-item${isBani ? ' sa-rec-bani' : ''}`}>
       <button className="sa-rec-body" onClick={onOpen}>
-        <p className="sa-rec-g">{entry.gurmukhi}</p>
-        <div className="sa-rec-meta">
-          {entry.source && <span>{entry.source}</span>}
-          {entry.page   && <span>Ang {entry.page}</span>}
-          <span className="sa-rec-time">{relTime(entry.timestamp)}</span>
-        </div>
+        {isBani ? (
+          <>
+            <p className="sa-rec-g">{entry.baniGurmukhi}</p>
+            <div className="sa-rec-meta">
+              <span className="sa-rec-badge"><IconBookmark /> Baani</span>
+              {entry.baniLabel && <span>{entry.baniLabel}</span>}
+              <span className="sa-rec-time">{relTime(entry.timestamp)}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="sa-rec-g">{entry.gurmukhi}</p>
+            <div className="sa-rec-meta">
+              {entry.source && <span>{entry.source}</span>}
+              {entry.page   && <span>Ang {entry.page}</span>}
+              <span className="sa-rec-time">{relTime(entry.timestamp)}</span>
+            </div>
+          </>
+        )}
       </button>
       <button className="sa-rec-del" onClick={onDelete} title="Remove"><IconX /></button>
     </div>
@@ -779,21 +1011,69 @@ function RecentItem({ entry, onOpen, onDelete }) {
 }
 
 /* ── ShabadPreviewPanel ──────────────────────────────────────── */
-/* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast. */
-function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, isBroadcasting, onSelectVerse, onSendToBroadcast, onClose, onFocus }) {
+/* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast.
+   When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
+   (rowId → label) renders dividers like "ਪਉੜੀ 1" inside the verse list. */
+function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, onSelectVerse, onSendToBroadcast, onClose, onFocus }) {
   const activeRef = useRef(null)
+  const jumpRef   = useRef(null)
+  const [outlineRequested, setOutlineMode] = useState(false)
+  const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
+  const outlineItems = useMemo(() => buildOutlineItems(shabadVerses, sectionLabels), [shabadVerses, sectionLabels])
+  // Derived — outline only renders when there are bookmarks to show. Avoids
+  // state thrashing when the shabad changes or has no bookmarks at all.
+  const outlineMode = outlineRequested && outlineItems.length > 0
 
   useEffect(() => {
+    if (outlineMode) return
+    // After an outline-jump, pin the bookmark to the top of the verse list.
+    // scrollIntoView is unreliable for nested scroll containers, so compute
+    // the offset against the .sp-verses scroller directly and set scrollTop.
+    if (pendingJumpRowId != null && jumpRef.current) {
+      const target = jumpRef.current
+      const scroller = target.closest('.sp-verses')
+      if (scroller) {
+        const sRect = scroller.getBoundingClientRect()
+        const tRect = target.getBoundingClientRect()
+        scroller.scrollTop += (tRect.top - sRect.top) - 6
+      } else {
+        target.scrollIntoView({ block: 'start' })
+      }
+      setPendingJumpRowId(null)
+      return  // skip the activeRef scroll on this pass
+    }
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [displayVerse?.ID])
+  }, [displayVerse, outlineMode, pendingJumpRowId])
+
+  function jumpToSection(item) {
+    setPendingJumpRowId(item.rowId)
+    setOutlineMode(false)
+    onSelectVerse(item.verse)
+  }
 
   return (
     <aside className="sa-panel sa-preview-panel" onClick={onFocus}>
       <div className="sp-header">
-        <div className="sp-meta">
-          {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
-        </div>
+        {bani ? (
+          <div className="sp-bani-title">
+            <span className="sp-bani-name">{toUnicode(bani.Gurmukhi)}</span>
+            <span className="sp-bani-sub">{verse?.Source?.SourceEnglish || 'Baani'}</span>
+          </div>
+        ) : (
+          <div className="sp-meta">
+            {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
+          </div>
+        )}
         <div className="sp-actions">
+          {outlineItems.length > 0 && (
+            <button
+              className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
+              onClick={() => setOutlineMode(m => !m)}
+              title={outlineMode ? 'Show verses' : 'Show outline'}
+            >
+              <IconBookmark />
+            </button>
+          )}
           <button className="sp-btn" onClick={onClose} title="Close preview"><IconX /></button>
         </div>
       </div>
@@ -802,47 +1082,202 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, isBroadcasting,
         ▶ Send to Broadcast
       </button>
 
-      <div className="sp-verses sp-verses-preview">
-        <p className="sp-verses-hint">↑ ↓ arrow keys to navigate · click to select</p>
-        {shabadVerses.map((v, i) => {
-          const isActive = displayVerse?.ID === v.ID
-          return (
-            <div
-              key={v.ID}
-              ref={isActive ? activeRef : null}
-              className={`sp-verse${isActive ? ' active' : ''}`}
-              onClick={() => onSelectVerse(v)}
-              role="button" tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
-            >
-              <span className="sp-verse-num">{i + 1}</span>
-              <div className="sp-verse-body">
-                <p className="sp-verse-g">{toUnicode(v.Gurmukhi)}</p>
+      {outlineMode ? (
+        <OutlineList items={outlineItems} onJump={jumpToSection} onBack={() => setOutlineMode(false)} />
+      ) : (
+        <div className="sp-verses sp-verses-preview">
+          <p className="sp-verses-hint">↑ ↓ arrow keys to navigate · click to select</p>
+          {shabadVerses.map((v, i) => {
+            // Identity by reference, not ID — duplicate verses (refrains) share IDs.
+            const isActive = displayVerse === v
+            const rowId    = v.__rowId ?? v.ID
+            const label    = sectionLabels?.get(rowId)
+            const isJumpTarget = label && pendingJumpRowId === rowId
+            return (
+              <div key={v.__rowId ?? `${i}-${v.ID}`}>
+                {label && <BookmarkLabel label={label} onZoomOut={() => setOutlineMode(true)} innerRef={isJumpTarget ? jumpRef : undefined} />}
+                <div
+                  ref={isActive ? activeRef : null}
+                  className={`sp-verse${isActive ? ' active' : ''}`}
+                  onClick={() => onSelectVerse(v)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
+                >
+                  <span className="sp-verse-num">{i + 1}</span>
+                  <div className="sp-verse-body">
+                    <p className="sp-verse-g">{toUnicode(v.Gurmukhi)}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
+      )}
+    </aside>
+  )
+}
+
+/* ── BaniSidebar ─────────────────────────────────────────────── */
+/* Left panel listing baanis. Top section pins Nitnem in a curated order; below
+   that, all remaining baanis (those with at least one verse) in their natural ID order. */
+function BaniSidebar({ baniInfo, activeBaniId, maryada, onChangeMaryada, onSelectBani, onClose }) {
+  const [filter, setFilter] = useState('')
+
+  const { nitnem, other } = useMemo(() => {
+    const seen = new Set()
+    const nitnem = []
+    for (const id of NITNEM_BANI_IDS) {
+      const entry = baniInfo.get(id)
+      if (entry && entry.verses.length > 0) { nitnem.push(entry); seen.add(id) }
+    }
+    const other = []
+    for (const entry of baniInfo.values()) {
+      if (seen.has(entry.meta.ID)) continue
+      if (entry.verses.length === 0)  continue
+      other.push(entry)
+    }
+    other.sort((a, b) => a.meta.ID - b.meta.ID)
+    return { nitnem, other }
+  }, [baniInfo])
+
+  const q = filter.trim().toLowerCase()
+  const matches = (entry) => {
+    if (!q) return true
+    const label = (NITNEM_LABELS[entry.meta.ID] || '').toLowerCase()
+    const token = (entry.meta.Token || '').toLowerCase()
+    const gur   = toUnicode(entry.meta.Gurmukhi || '').toLowerCase()
+    return label.includes(q) || token.includes(q) || gur.includes(q)
+  }
+  const nitnemFiltered = nitnem.filter(matches)
+  const otherFiltered  = other.filter(matches)
+
+  return (
+    <aside className="sa-panel sa-banis-panel">
+      <div className="sp-header">
+        <div className="sp-meta sb-title">Baanis</div>
+        <div className="sp-actions">
+          <button className="sp-btn" onClick={onClose} title="Hide baanis"><IconX /></button>
+        </div>
+      </div>
+
+      <div className="sb-maryada">
+        <label className="sb-maryada-label" htmlFor="sb-maryada-select">Maryada</label>
+        <select
+          id="sb-maryada-select"
+          className="sb-maryada-select"
+          value={maryada}
+          onChange={e => onChangeMaryada(e.target.value)}
+          title="Filters baani contents to this tradition"
+        >
+          {MARYADAS.map(m => (
+            <option key={m.id} value={m.id}>{m.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="sb-filter-wrap">
+        <input
+          className="sb-filter"
+          type="search"
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder="Filter baanis…"
+          autoComplete="off" autoCorrect="off" spellCheck={false}
+        />
+      </div>
+
+      <div className="sb-list">
+        {nitnemFiltered.length > 0 && (
+          <>
+            <div className="sb-group-label">Nitnem</div>
+            {nitnemFiltered.map(entry => (
+              <BaniRow
+                key={entry.meta.ID}
+                entry={entry}
+                active={activeBaniId === entry.meta.ID}
+                onClick={() => onSelectBani(entry.meta.ID)}
+              />
+            ))}
+          </>
+        )}
+        {otherFiltered.length > 0 && (
+          <>
+            <div className="sb-group-label">All baanis</div>
+            {otherFiltered.map(entry => (
+              <BaniRow
+                key={entry.meta.ID}
+                entry={entry}
+                active={activeBaniId === entry.meta.ID}
+                onClick={() => onSelectBani(entry.meta.ID)}
+              />
+            ))}
+          </>
+        )}
+        {nitnemFiltered.length === 0 && otherFiltered.length === 0 && (
+          <p className="sb-empty">No matching baanis</p>
+        )}
       </div>
     </aside>
   )
 }
 
+function BaniRow({ entry, active, onClick }) {
+  const label = NITNEM_LABELS[entry.meta.ID]
+  return (
+    <button className={`sb-row${active ? ' active' : ''}`} onClick={onClick}>
+      <span className="sb-row-g">{toUnicode(entry.meta.Gurmukhi)}</span>
+      <span className="sb-row-sub">
+        {label || entry.meta.Token}
+        <span className="sb-row-count"> · {entry.verses.length}</span>
+      </span>
+    </button>
+  )
+}
+
 /* ── BroadcastPanel ──────────────────────────────────────────── */
-/* Locked to what is live. Shows display controls. No close button. */
-function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
+/* Locked to what is live. Shows display controls. No close button.
+   When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
+   renders dividers like "ਪਉੜੀ 1" inline in the verse list (mirrors preview panel). */
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
   const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
   const count      = displaySettings.verseCount || 1
-  const anchorIdx  = shabadVerses.findIndex(v => v.ID === displayVerse?.ID)
+  // Identity by reference — duplicate verses (refrains) share IDs.
+  const anchorIdx  = displayVerse ? shabadVerses.indexOf(displayVerse) : -1
   const verseWindow = anchorIdx !== -1
     ? shabadVerses.slice(anchorIdx, Math.min(anchorIdx + count, shabadVerses.length))
     : displayVerse ? [displayVerse] : []
   const transOpts  = getTranslationOptions(displayVerse?.Translations)
   const activeRef  = useRef(null)
   const [ctrlOpen, setCtrlOpen] = useState(false)
+  const jumpRef = useRef(null)
+  const [outlineRequested, setOutlineMode] = useState(false)
+  const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
+  const outlineItems = useMemo(() => buildOutlineItems(shabadVerses, sectionLabels), [shabadVerses, sectionLabels])
+  const outlineMode = outlineRequested && outlineItems.length > 0
 
   useEffect(() => {
+    if (outlineMode) return
+    if (pendingJumpRowId != null && jumpRef.current) {
+      const target = jumpRef.current
+      const scroller = target.closest('.sp-verses')
+      if (scroller) {
+        const sRect = scroller.getBoundingClientRect()
+        const tRect = target.getBoundingClientRect()
+        scroller.scrollTop += (tRect.top - sRect.top) - 6
+      } else {
+        target.scrollIntoView({ block: 'start' })
+      }
+      setPendingJumpRowId(null)
+      return
+    }
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [displayVerse?.ID])
+  }, [displayVerse, outlineMode, pendingJumpRowId])
+
+  function jumpToSection(item) {
+    setPendingJumpRowId(item.rowId)
+    setOutlineMode(false)
+    onSelectVerse(item.verse)  // broadcast push happens inside selectBcastVerse if live
+  }
 
   return (
     <aside className="sa-panel sa-bcast-panel" onClick={onFocus}>
@@ -855,8 +1290,31 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
             title="Stop broadcasting"
           />
         )}
-        <div className="sp-meta">
-          {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
+        {bani ? (
+          <div className="sp-bani-title">
+            <span className="sp-bani-name">{toUnicode(bani.Gurmukhi)}</span>
+            <span className="sp-bani-sub">{verse?.Source?.SourceEnglish || 'Baani'}</span>
+          </div>
+        ) : (
+          <div className="sp-meta">
+            {[verse?.Source?.SourceEnglish, verse?.Raag?.RaagEnglish, verse?.PageNo && `Ang ${verse.PageNo}`, verse?.Writer?.WriterEnglish].filter(Boolean).join(' · ')}
+          </div>
+        )}
+        <div className="sp-actions">
+          {outlineItems.length > 0 && (
+            <button
+              className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
+              onClick={() => setOutlineMode(m => !m)}
+              title={outlineMode ? 'Show verses' : 'Show outline'}
+            >
+              <IconBookmark />
+            </button>
+          )}
+          {/* Close only appears when the broadcast is stopped — prevents an
+              accidental dismiss while content is live on the display tab. */}
+          {!isLive && (
+            <button className="sp-btn" onClick={onClose} title="Close"><IconX /></button>
+          )}
         </div>
       </div>
 
@@ -967,29 +1425,39 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, displaySettings, is
 
       </>}
 
-      {/* verse list */}
-      <div className="sp-verses">
-        <p className="sp-verses-hint">↑ ↓ navigate · broadcasting updates live</p>
-        {shabadVerses.map((v, i) => {
-          const isAnchor   = displayVerse?.ID === v.ID
-          const isInWindow = anchorIdx !== -1 && i > anchorIdx && i < anchorIdx + count
-          return (
-            <div
-              key={v.ID}
-              ref={isAnchor ? activeRef : null}
-              className={`sp-verse${isAnchor ? ' active' : isInWindow ? ' in-window' : ''}`}
-              onClick={() => onSelectVerse(v)}
-              role="button" tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
-            >
-              <span className="sp-verse-num">{i + 1}</span>
-              <div className="sp-verse-body">
-                <p className="sp-verse-g">{renderGurmukhi(v.Gurmukhi, displaySettings.larivar)}</p>
+      {/* verse list (or outline view when zoomed out) */}
+      {outlineMode ? (
+        <OutlineList items={outlineItems} onJump={jumpToSection} onBack={() => setOutlineMode(false)} />
+      ) : (
+        <div className="sp-verses">
+          <p className="sp-verses-hint">↑ ↓ navigate · broadcasting updates live</p>
+          {shabadVerses.map((v, i) => {
+            // Identity by reference — duplicate verses (refrains) share IDs.
+            const isAnchor   = displayVerse === v
+            const isInWindow = anchorIdx !== -1 && i > anchorIdx && i < anchorIdx + count
+            const rowId      = v.__rowId ?? v.ID
+            const label      = sectionLabels?.get(rowId)
+            const isJumpTarget = label && pendingJumpRowId === rowId
+            return (
+              <div key={v.__rowId ?? `${i}-${v.ID}`}>
+                {label && <BookmarkLabel label={label} onZoomOut={() => setOutlineMode(true)} innerRef={isJumpTarget ? jumpRef : undefined} />}
+                <div
+                  ref={isAnchor ? activeRef : null}
+                  className={`sp-verse${isAnchor ? ' active' : isInWindow ? ' in-window' : ''}`}
+                  onClick={() => onSelectVerse(v)}
+                  role="button" tabIndex={0}
+                  onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
+                >
+                  <span className="sp-verse-num">{i + 1}</span>
+                  <div className="sp-verse-body">
+                    <p className="sp-verse-g">{renderGurmukhi(v.Gurmukhi, displaySettings.larivar)}</p>
+                  </div>
+                </div>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
     </aside>
   )
 }
@@ -1043,4 +1511,71 @@ function IconSun() {
 }
 function IconMoon() {
   return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+}
+function IconBook() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+}
+function IconBookmark({ className }) {
+  return <svg className={className} width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+}
+function IconArrowLeft() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+}
+function IconArrowRight() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+}
+function IconExpand() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+}
+
+/* ── BookmarkLabel ───────────────────────────────────────────── */
+/* Inline section header inside a bani verse list. Clicking zooms out to the
+   bookmark outline. Visually distinct from verses: amber pill, bookmark icon,
+   "zoom" icon at right hinting it's interactive. `innerRef` is used by the
+   parent to scroll the bookmark itself into view after an outline-jump. */
+function BookmarkLabel({ label, onZoomOut, innerRef }) {
+  return (
+    <button ref={innerRef} className="sp-section-label" onClick={onZoomOut} title="Show outline">
+      <IconBookmark className="sp-section-icon" />
+      <span className="sp-section-text">{toUnicode(label)}</span>
+      <IconExpand />
+    </button>
+  )
+}
+
+/* ── OutlineList ─────────────────────────────────────────────── */
+/* The "zoomed out" view: only bookmark titles, big tap targets, one per row.
+   Clicking a row jumps to the section's first verse and exits outline mode. */
+function OutlineList({ items, onJump, onBack }) {
+  return (
+    <div className="sp-outline">
+      <button className="sp-outline-back" onClick={onBack}>
+        <IconArrowLeft /> <span>Back to verses</span>
+      </button>
+      <p className="sp-outline-title">
+        Outline <span className="sp-outline-count">· {items.length} sections</span>
+      </p>
+      {items.length === 0 && <p className="sp-outline-empty">No bookmarks in this bani</p>}
+      {items.map((item, i) => (
+        <button key={item.rowId} className="sp-outline-row" onClick={() => onJump(item)}>
+          <span className="sp-outline-num">{i + 1}</span>
+          <IconBookmark className="sp-outline-icon" />
+          <span className="sp-outline-label">{toUnicode(item.label)}</span>
+          <IconArrowRight />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/* Build the ordered list of bookmark items from a sectionLabels Map. */
+function buildOutlineItems(shabadVerses, sectionLabels) {
+  if (!sectionLabels || sectionLabels.size === 0) return []
+  const items = []
+  for (const v of shabadVerses) {
+    const key = v.__rowId ?? v.ID
+    const label = sectionLabels.get(key)
+    if (label) items.push({ rowId: key, label, verse: v })
+  }
+  return items
 }

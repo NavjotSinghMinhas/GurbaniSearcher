@@ -12,6 +12,10 @@
   --accent-dim:    rgba(168, 85, 247, 0.15);
   --accent-glow:   rgba(168, 85, 247, 0.4);
   --accent-border: rgba(168, 85, 247, 0.35);
+  /* amber/gold — used for bani section bookmarks so they don't clash with the purple accent that marks the active verse */
+  --bookmark:        #fbbf24;
+  --bookmark-dim:    rgba(251, 191, 36, 0.14);
+  --bookmark-border: rgba(251, 191, 36, 0.45);
   --danger:        #f87171;
 
   --screen-bg: radial-gradient(ellipse 80% 60% at 50% 30%, #241848, #16121f 70%);
@@ -40,6 +44,9 @@
   --accent-dim:    rgba(124, 58, 237, 0.1);
   --accent-glow:   rgba(124, 58, 237, 0.3);
   --accent-border: rgba(124, 58, 237, 0.28);
+  --bookmark:        #b45309;
+  --bookmark-dim:    rgba(180, 83, 9, 0.1);
+  --bookmark-border: rgba(180, 83, 9, 0.32);
   --danger:        #dc2626;
   --screen-bg:     var(--bg);
   color-scheme: light;

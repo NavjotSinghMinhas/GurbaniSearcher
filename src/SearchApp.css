@@ -465,6 +465,26 @@
 .sa-rec-query { color: var(--accent); font-style: italic; }
 .sa-rec-time  { margin-left: auto; opacity: 0.4; }
 
+/* Bani entries in Recent — left amber stripe + "Baani" badge so they're
+   visually distinct from single-shabad entries at a glance. */
+.sa-rec-item.sa-rec-bani { border-left: 3px solid var(--bookmark-border); }
+.sa-rec-item.sa-rec-bani:hover { border-left-color: var(--bookmark); }
+.sa-rec-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 10px;
+  background: var(--bookmark-dim);
+  color: var(--bookmark);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sa-rec-badge::before { display: none; }  /* override the ' · ' separator from sa-rec-meta span::before */
+.sa-rec-badge svg { width: 11px; height: 11px; }
+
 .sa-rec-del {
   display: flex;
   align-items: center;
@@ -560,6 +580,21 @@
 .sa-preview-panel { width: 420px; }
 .sa-bcast-panel   { width: 460px; background: var(--surface-2); }
 
+/* baanis sidebar — same .sa-panel base, but anchored on the left */
+.sa-banis-panel {
+  width: 260px;
+  border-left: none;
+  border-right: 1px solid var(--border);
+  animation: panelSlideLeft 0.2s ease both;
+}
+
+/* tighten panels when multiple are open so the page still breathes */
+.has-banis.has-preview .sa-banis-panel,
+.has-banis.has-broadcast .sa-banis-panel { width: 230px; }
+.has-banis.has-preview.has-broadcast .sa-banis-panel { width: 210px; }
+.has-banis.has-preview.has-broadcast .sa-preview-panel { width: 320px; }
+.has-banis.has-preview.has-broadcast .sa-bcast-panel   { width: 380px; }
+
 /* narrower preview when both panels are open */
 .has-preview.has-broadcast .sa-preview-panel { width: 360px; }
 .has-preview.has-broadcast .sa-bcast-panel   { width: 420px; }
@@ -567,6 +602,313 @@
 @keyframes panelSlide {
   from { opacity: 0; transform: translateX(18px); }
   to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes panelSlideLeft {
+  from { opacity: 0; transform: translateX(-18px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* baanis header toggle button */
+.sa-banis-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  margin-right: 4px;
+}
+.sa-banis-toggle:hover,
+.sa-banis-toggle.active {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+/* baanis sidebar contents */
+.sb-title { font-weight: 700; font-size: 13px; opacity: 0.9; }
+
+/* maryada (tradition) selector — sits just under the panel header.
+   SGPC vs Taksal vs Buddha Dal vs Medium versions of the same baani differ. */
+.sb-maryada {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px 0;
+  flex-shrink: 0;
+}
+.sb-maryada-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+.sb-maryada-select {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-h);
+  font-size: 12.5px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.sb-maryada-select:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-dim); }
+
+.sb-filter-wrap { padding: 10px 12px 6px; flex-shrink: 0; }
+.sb-filter {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-h);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.sb-filter:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-dim); }
+.sb-filter::placeholder { color: var(--text); opacity: 0.45; }
+.sb-filter::-webkit-search-cancel-button { display: none; }
+
+.sb-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px 14px; }
+
+.sb-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.5;
+  padding: 12px 6px 6px;
+}
+
+.sb-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-h);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sb-row + .sb-row { margin-top: 2px; }
+.sb-row:hover { background: var(--accent-dim); border-color: var(--accent-border); }
+.sb-row.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.sb-row-g {
+  font-family: var(--gurmukhi);
+  font-size: 16px;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.sb-row-sub {
+  font-size: 11px;
+  opacity: 0.65;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.sb-row-count { opacity: 0.6; }
+
+.sb-empty { padding: 16px 12px; font-size: 12px; color: var(--text); opacity: 0.55; }
+
+/* bani title in preview header (replaces plain meta line when viewing a bani) */
+.sp-bani-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.sp-bani-name {
+  font-family: var(--gurmukhi);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-h);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sp-bani-sub {
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.55;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* section divider inside the bani verse list — a clickable bookmark pill.
+   Uses the amber bookmark palette so it never collides visually with the
+   purple-accent treatment used for the active verse selection. */
+.sp-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 16px);
+  margin: 12px 8px 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  /* Softer, less distracting while reading verses — no fill, dashed faint
+     amber border, slightly dimmed amber text. Hover restores the full pill. */
+  border: 1px dashed var(--bookmark-border);
+  background: transparent;
+  color: var(--bookmark);
+  opacity: 0.65;
+  font-family: var(--gurmukhi);
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s, border-color 0.15s, border-style 0.15s, color 0.15s, transform 0.08s;
+}
+.sp-section-label:hover {
+  opacity: 1;
+  background: var(--bookmark);
+  color: #1a1208;
+  border-color: var(--bookmark);
+  border-style: solid;
+}
+.sp-section-label:active { transform: scale(0.99); }
+.sp-section-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-section-icon { flex-shrink: 0; opacity: 0.95; }
+
+
+/* outline-mode toggle button in the panel header — bookmark color so it
+   reads as a "bookmarks tool", not a generic accent action. */
+.sp-outline-btn { color: var(--bookmark); border-color: var(--bookmark-border); }
+.sp-outline-btn:hover {
+  background: var(--bookmark-dim);
+  border-color: var(--bookmark);
+  color: var(--bookmark);
+}
+.sp-outline-btn.active {
+  background: var(--bookmark);
+  color: #1a1208;
+  border-color: var(--bookmark);
+}
+
+/* outline view — the "zoomed out" list of just bookmark titles */
+.sp-outline {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px 16px;
+}
+
+.sp-outline-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sp-outline-back:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.sp-outline-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.55;
+  margin: 8px 4px 8px;
+}
+.sp-outline-count { font-weight: 500; opacity: 0.8; }
+
+.sp-outline-empty { padding: 12px 4px; font-size: 12px; color: var(--text); opacity: 0.55; }
+
+.sp-outline-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
+}
+.sp-outline-row + .sp-outline-row { margin-top: 6px; }
+.sp-outline-row:hover {
+  background: var(--bookmark-dim);
+  border-color: var(--bookmark);
+  color: var(--bookmark);
+}
+.sp-outline-row:active { transform: scale(0.995); }
+
+.sp-outline-num {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--bookmark-dim);
+  color: var(--bookmark);
+  font-size: 11px;
+  font-weight: 700;
+}
+.sp-outline-icon { flex-shrink: 0; color: var(--bookmark); opacity: 0.9; }
+.sp-outline-label {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--gurmukhi);
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* panel header */
