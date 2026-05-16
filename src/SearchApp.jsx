@@ -37,6 +37,16 @@ const DEFAULT_MARYADA = 'SGPC'
 
 // Nitnem baanis surfaced at the top of the Baanis sidebar in this order
 const NITNEM_BANI_IDS = [2, 4, 6, 7, 9, 10, 21, 23, 24]
+// Banis the kirtan matcher will auto-attach as context when a recognised verse
+// belongs to one. Listed in priority order — when a verse is in multiple of
+// these (e.g. a Salok M9 line in both Rehras and Sukhmani), the earlier wins.
+// We keep this curated rather than every bani in the data, so a generic
+// "ਰਾਗੁ X" page-range doesn't get auto-promoted to a kirtan context.
+const KIRTAN_AUTO_BANI_IDS = [
+  2, 4, 6, 7, 9, 10, 21, 23, 24,  // nitnem
+  31, 36, 27, 28, 11, 29, 3, 5,   // other common: Sukhmani, Dukh Bhanjani, Barah Maha, Lavaan, Akal Ustat, Shabad Hazare
+  90,                              // Asa Di Vaar (last — large)
+]
 const NITNEM_LABELS = {
   2:  'Japji Sahib',
   4:  'Jaap Sahib',
@@ -140,45 +150,96 @@ function wordMatchCount(tWords, vWords) {
   return n
 }
 
-// Context-aware voice matching on every interim result (word-by-word).
-// Uses Chrome's confidence directly, plus a word-level fuzzy match against
-// pre-split verse words (verseWordsMap) to handle kirtanis repeating words
-// or singing partial phrases.
+// Context-aware kirtan matcher. Runs on every speech-recognition event —
+// interim AND final — and scores verses on word-level fuzzy matches rather
+// than waiting for Chrome's confidence to spike on a final.
 //
-// Thresholds (Chrome confidence 0–1):
-//   discovery (no context):  ≥0.60, need ≥2 word matches
-//   confirmed, same verse:   ≥0.25, need ≥1 word match  (repeating is fine)
-//   confirmed, same shabad:  ≥0.50, need ≥2 word matches
-//   confirmed, diff shabad:  ≥0.75, need ≥2 word matches
+// Key idea: an interim transcript like "Har Amrit Bhi" already has 2 settled
+// words ("Har", "Amrit") plus a truncated trailing word ("Bhi") that is a
+// prefix of "Bhinne". Matching this against the current shabad gives a strong
+// signal long before Chrome commits the final "Har Amrit Bhinne Loyna".
+//
+// Tiers (combined match count → action):
+//   in-context, same verse:        ≥1 match  (stay; strong inertia)
+//   in-context, same shabad/bani:  ≥2 matches (cross-verse jump within ctx)
+//   different shabad:              ≥3 matches + isFinal && conf≥0.6
+//   discovery (no context):        ≥2.5 matches (interim OK)
+//
+// Cross-shabad is the one path gated to confident finals — partial transcripts
+// can't pull the broadcast away from the current bani. Discovery (kirtan
+// listening with nothing selected) runs on interims so a candidate shows up
+// as soon as the singer has uttered ~3 recognisable words; otherwise we'd be
+// stuck until Chrome finalises on a silence, which during continuous kirtan
+// effectively only happens when the recogniser is stopped.
 function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVerses, verseWordsMap) {
   if (!speechResults || speechResults.length === 0) return null
 
-  const lastAlt = speechResults[speechResults.length - 1][0]
-  const conf    = lastAlt.confidence || 0
+  const lastResult = speechResults[speechResults.length - 1]
+  const lastAlt    = lastResult[0]
+  const conf       = lastAlt.confidence || 0
+  const isFinal    = !!lastResult.isFinal
 
-  // Convert recognized Gurmukhi (Unicode) → ASCII to match verse data encoding
-  const tWords = lastAlt.transcript.trim().split(/\s+/).filter(Boolean)
+  // Recognised words → ASCII, drop noise (1-char tokens / punctuation only).
+  const rawWords = lastAlt.transcript.trim().split(/\s+/).filter(Boolean)
     .map(w => cleanWord(isGurmukhi(w) ? toAscii(w) : w))
     .filter(w => w.length >= 2)
-  if (tWords.length < 1) return null
+  if (rawWords.length === 0) return null
+
+  // Chrome accumulates the whole chunk in the transcript; cap to a trailing
+  // window so old verses don't keep matching long after the singer moved on.
+  const WINDOW = 8
+  const windowed = rawWords.length > WINDOW ? rawWords.slice(-WINDOW) : rawWords
+
+  // For interim results the last word may still be truncated. Treat earlier
+  // words as "settled" full-word matches; treat the trailing word as a
+  // prefix/fuzzy bonus so partial recognitions still count.
+  const settled  = isFinal ? windowed : windowed.slice(0, -1)
+  const trailing = isFinal ? null     : windowed[windowed.length - 1]
+  if (settled.length === 0 && !trailing) return null
 
   const hasCtx = contextVerse != null
   const ctxSet = contextShabadVerses ? new Set(contextShabadVerses.map(v => v.ID)) : null
+  // The one path still gated to confident finals — pulling out of the
+  // current bani/shabad needs strong evidence.
+  const allowCrossShabad = isFinal && conf >= 0.6
+
+  // If we already have a shabad/bani context AND we won't promote out of it
+  // this turn, only consider those verses — much faster than scanning 142k
+  // every interim event.
+  const pool = (hasCtx && !allowCrossShabad) ? contextShabadVerses : verses
+
   let best = null, bestScore = 0
 
-  for (const v of verses) {
-    let req = 0.60, inertia = 0, minMatch = 2
-    if (hasCtx) {
-      if (v.ID === contextVerse.ID)  { req = 0.25; inertia = 3; minMatch = 1 }
-      else if (ctxSet?.has(v.ID))    { req = 0.50; inertia = 1; minMatch = 2 }
-      else                            { req = 0.75;              minMatch = 3 }
+  for (const v of pool) {
+    let minMatch, inertia
+    if (!hasCtx) {
+      // Discovery: no surrounding shabad to anchor on, so demand a slightly
+      // stricter word match than in-context — but DON'T require a final, or
+      // a candidate never appears mid-singing.
+      minMatch = 2.5; inertia = 0
+    } else if (v.ID === contextVerse.ID) {
+      minMatch = 1; inertia = 2
+    } else if (ctxSet?.has(v.ID)) {
+      minMatch = 2; inertia = 1
+    } else {
+      if (!allowCrossShabad) continue
+      minMatch = 3; inertia = 0
     }
-    if (conf < req) continue
 
-    const matches = wordMatchCount(tWords, verseWordsMap.get(v.ID) || [])
-    if (matches < minMatch) continue
+    const vWords = verseWordsMap.get(v.ID)
+    if (!vWords || vWords.length === 0) continue
 
-    const score = matches + inertia
+    let matched = wordMatchCount(settled, vWords)
+    // Trailing partial word — full credit if it actually matches a verse
+    // word (Chrome may have already committed it internally), half credit
+    // if it's a prefix of some longer verse word (still being recognised).
+    if (trailing) {
+      if (vWords.some(vw => fuzzyWordMatch(trailing, vw))) matched += 1
+      else if (trailing.length >= 2 && vWords.some(vw => vw.length > trailing.length && vw.startsWith(trailing))) matched += 0.5
+    }
+    if (matched < minMatch) continue
+
+    const score = matched + inertia
     if (score > bestScore) { bestScore = score; best = v }
   }
 
@@ -360,6 +421,42 @@ export function SearchApp({ data }) {
     return byBani
   }, [data, maryada])
 
+  /* Reverse index: verseId → [baniId, …] so the kirtan matcher can auto-pick a
+     bani context (e.g. recognise that a recognised verse is part of Rehras)
+     even when the user didn't open the bani manually from the sidebar. */
+  const verseToBani = useMemo(() => {
+    const m = new Map()
+    for (const entry of baniInfo.values()) {
+      for (const v of entry.verses) {
+        const list = m.get(v.ID)
+        if (list) list.push(entry.meta.ID)
+        else m.set(v.ID, [entry.meta.ID])
+      }
+    }
+    return m
+  }, [baniInfo])
+
+  /* Pick the most useful bani for a verse. Priority:
+       1. Caller's preferred bani if it contains the verse (current bcast/preview)
+       2. First match from KIRTAN_AUTO_BANI_IDS in declared priority order
+     Returns the full baniInfo entry (meta + verses + sectionLabels), or null
+     if the verse isn't part of any auto-detect bani — caller should fall back
+     to plain shabad context. */
+  function findBaniForVerse(verseId, preferBaniId = null) {
+    const baniIds = verseToBani.get(verseId)
+    if (!baniIds || baniIds.length === 0) return null
+    if (preferBaniId && baniIds.includes(preferBaniId)) {
+      const e = baniInfo.get(preferBaniId)
+      if (e?.verses.length > 0) return e
+    }
+    for (const id of KIRTAN_AUTO_BANI_IDS) {
+      if (!baniIds.includes(id)) continue
+      const e = baniInfo.get(id)
+      if (e?.verses.length > 0) return e
+    }
+    return null
+  }
+
   /* ── BroadcastChannel ──────────────────────────────────────── */
   useEffect(() => {
     const ch = new BroadcastChannel(CHANNEL_NAME)
@@ -492,8 +589,28 @@ export function SearchApp({ data }) {
           setBcastDv(svsMatch)
           pushBroadcast(svsMatch, displaySettingsRef.current, true)
         } else {
-          // Different shabad — require 3 consecutive wins before committing.
-          // A single wrong recognition resets the counter, preventing spurious switches.
+          // Match is from a different shabad. Two fast paths first:
+          //   a) If the current bcast verse AND the new match both live in
+          //      the same auto-detect bani, this isn't really a shabad switch
+          //      — it's the next pauri of the same bani. Skip the 3-retry
+          //      and upgrade bcastSvs to the full bani so subsequent jumps
+          //      stay "same shabad" forever after.
+          //   b) Otherwise it's a genuine cross-shabad — keep the existing
+          //      3-consecutive-match safeguard, but after committing, still
+          //      try to attach a bani context for the new shabad.
+          const currentVerseId = bcastDvRef.current?.ID
+          const currentBaniIds = currentVerseId ? (verseToBani.get(currentVerseId) || []) : []
+          const matchBaniIds   = verseToBani.get(match.ID) || []
+          const sharedBaniId   = currentBaniIds.find(b => matchBaniIds.includes(b) && KIRTAN_AUTO_BANI_IDS.includes(b))
+          if (sharedBaniId) {
+            const entry = baniInfo.get(sharedBaniId)
+            const wrapped = entry?.verses.find(v => v.ID === match.ID)
+            if (entry && wrapped) {
+              kirtanShabadCandidateRef.current = null
+              startBroadcast(wrapped, entry.verses, true, entry.meta, entry.sectionLabels)
+              return
+            }
+          }
           const shabadId = match.Shabads?.[0]?.ShabadID
           const prev = kirtanShabadCandidateRef.current
           if (prev?.shabadId === shabadId) {
@@ -501,7 +618,13 @@ export function SearchApp({ data }) {
             prev.verse = match
             if (prev.count >= 3) {
               kirtanShabadCandidateRef.current = null
-              startBroadcast(match, getShabadVerses(match), true)
+              const entry = findBaniForVerse(match.ID)
+              const wrapped = entry?.verses.find(v => v.ID === match.ID)
+              if (entry && wrapped) {
+                startBroadcast(wrapped, entry.verses, true, entry.meta, entry.sectionLabels)
+              } else {
+                startBroadcast(match, getShabadVerses(match), true)
+              }
             }
           } else {
             kirtanShabadCandidateRef.current = { shabadId, verse: match, count: 1 }
@@ -546,16 +669,16 @@ export function SearchApp({ data }) {
     if (!kirtanCandidate) return
     kirtanApprovedRef.current = true
     setKirtanMode('auto')
-    // If a bani is open in preview (or was last broadcast) and the recognized
-    // verse belongs to it, broadcast the whole bani (all pauris) as context —
-    // otherwise we'd scope down to a single sub-shabad, and every cross-pauri
-    // jump inside the bani would hit the "different shabad" 3-retry safeguard.
-    const openBani = pvBani || bcastBani
-    const baniEntry = openBani && baniInfo.get(openBani.ID)
+    // Pick a bani context — first preferring the one already open, then any
+    // bani in the curated KIRTAN_AUTO_BANI_IDS list that contains this verse.
+    // If we find one, broadcasting the whole bani means subsequent within-bani
+    // pauri jumps stay "same shabad" and skip the 3-retry safeguard entirely.
+    const preferId  = pvBani?.ID ?? bcastBani?.ID ?? null
+    const baniEntry = findBaniForVerse(kirtanCandidate.ID, preferId)
     const wrappedMatch = baniEntry?.verses.find(v => v.ID === kirtanCandidate.ID)
-    if (wrappedMatch) {
-      startBroadcast(wrappedMatch, baniEntry.verses, true, openBani, baniEntry.sectionLabels)
-      saveHistory(historyEntry(kirtanCandidate, openBani))
+    if (wrappedMatch && baniEntry) {
+      startBroadcast(wrappedMatch, baniEntry.verses, true, baniEntry.meta, baniEntry.sectionLabels)
+      saveHistory(historyEntry(kirtanCandidate, baniEntry.meta))
     } else {
       startBroadcast(kirtanCandidate, getShabadVerses(kirtanCandidate), true)
       saveHistory(historyEntry(kirtanCandidate))
