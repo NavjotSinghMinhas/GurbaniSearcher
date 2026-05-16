@@ -174,27 +174,39 @@ function wordMatchCount(tWords, vWords) {
 function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVerses, verseWordsMap) {
   if (!speechResults || speechResults.length === 0) return null
 
-  const lastResult = speechResults[speechResults.length - 1]
-  const lastAlt    = lastResult[0]
-  const conf       = lastAlt.confidence || 0
-  const isFinal    = !!lastResult.isFinal
-
-  // Recognised words → ASCII, drop noise (1-char tokens / punctuation only).
-  const rawWords = lastAlt.transcript.trim().split(/\s+/).filter(Boolean)
-    .map(w => cleanWord(isGurmukhi(w) ? toAscii(w) : w))
-    .filter(w => w.length >= 2)
-  if (rawWords.length === 0) return null
-
-  // Chrome accumulates the whole chunk in the transcript; cap to a trailing
-  // window so old verses don't keep matching long after the singer moved on.
+  // Build a rolling word window from the most recent results. Chrome can
+  // finalise a chunk mid-kirtan and immediately start a fresh interim — if
+  // we only read the latest chunk, a one-word interim like "Naam" appearing
+  // after a finalised "Har Amrit Bhinne Loyna" would yank us to any verse
+  // starting with "naam". Walking back through prior chunks (finalised or
+  // not) gives the matcher the actual recent context to anchor on, even
+  // when individual words are wrong/missing.
   const WINDOW = 8
-  const windowed = rawWords.length > WINDOW ? rawWords.slice(-WINDOW) : rawWords
+  let isFinal = false, conf = 0, lastHasWords = false
+  let recent = []
+  for (let i = speechResults.length - 1; i >= 0; i--) {
+    const r = speechResults[i]
+    const words = r[0].transcript.trim().split(/\s+/).filter(Boolean)
+      .map(w => cleanWord(isGurmukhi(w) ? toAscii(w) : w))
+      .filter(w => w.length >= 2)
+    if (i === speechResults.length - 1) {
+      isFinal       = !!r.isFinal
+      conf          = r[0].confidence || 0
+      lastHasWords  = words.length > 0
+    }
+    recent = words.concat(recent)
+    if (recent.length >= WINDOW + 2) break
+  }
+  if (recent.length === 0) return null
 
-  // For interim results the last word may still be truncated. Treat earlier
-  // words as "settled" full-word matches; treat the trailing word as a
-  // prefix/fuzzy bonus so partial recognitions still count.
-  const settled  = isFinal ? windowed : windowed.slice(0, -1)
-  const trailing = isFinal ? null     : windowed[windowed.length - 1]
+  const windowed = recent.length > WINDOW ? recent.slice(-WINDOW) : recent
+
+  // The "trailing" word only makes sense when the latest chunk is interim AND
+  // has at least one word — otherwise the windowed tail came from an already-
+  // finalised chunk and should be treated as settled, not a prefix candidate.
+  const trailingIsInterim = !isFinal && lastHasWords
+  const settled  = trailingIsInterim ? windowed.slice(0, -1) : windowed
+  const trailing = trailingIsInterim ? windowed[windowed.length - 1] : null
   if (settled.length === 0 && !trailing) return null
 
   const hasCtx = contextVerse != null
