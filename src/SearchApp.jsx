@@ -220,6 +220,30 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
   // every interim event.
   const pool = (hasCtx && !allowCrossShabad) ? contextShabadVerses : verses
 
+  // Identify the verse RIGHT AFTER the current one in the context. When the
+  // singer is transitioning forward, recent words still partially match the
+  // current verse (residual inertia) while new words match the next verse —
+  // a small score boost on the next verse lets that "old tail + new head"
+  // pattern outrank the current verse's inertia without waiting for the
+  // current verse's matches to age out of the rolling window. Tail words
+  // matching the next verse strengthen the boost further.
+  let nextInCtx = null
+  let nextTailMatch = 0
+  if (hasCtx && contextShabadVerses) {
+    const idx = contextShabadVerses.indexOf(contextVerse)
+    if (idx >= 0 && idx + 1 < contextShabadVerses.length) {
+      nextInCtx = contextShabadVerses[idx + 1]
+      const nextWords = verseWordsMap.get(nextInCtx.ID)
+      if (nextWords && nextWords.length > 0) {
+        // Look at the latest portion of the window (the bit Chrome is
+        // currently producing) — if those words match the next verse, the
+        // transition is happening RIGHT NOW.
+        const tail = windowed.slice(-3)
+        nextTailMatch = wordMatchCount(tail, nextWords)
+      }
+    }
+  }
+
   let best = null, bestScore = 0
 
   for (const v of pool) {
@@ -251,7 +275,12 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
     }
     if (matched < minMatch) continue
 
-    const score = matched + inertia
+    let score = matched + inertia
+    // Sequential-transition boost. +1 baseline when v is the very next verse
+    // in context, plus an extra +1 if the latest tail of the window already
+    // matches it — when both fire, even a partial 1.5-word read of the next
+    // verse can outrank the current verse holding 2-match inertia.
+    if (v === nextInCtx) score += 1 + (nextTailMatch >= 2 ? 1 : 0)
     if (score > bestScore) { bestScore = score; best = v }
   }
 
