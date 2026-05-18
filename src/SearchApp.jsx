@@ -490,13 +490,9 @@ export function SearchApp({ data }) {
   /* Pick the most useful bani for a verse. Priority:
        1. Caller's preferred bani if it contains the verse (current bcast/preview)
        2. First match from KIRTAN_AUTO_BANI_IDS in declared priority order
-          (curated nitnem ordering — wins over generic size-based pick)
-       3. Smallest of any remaining bani in the sidebar that contains the verse
-     Auto-detect scope mirrors the Baanis sidebar — every bani with verses > 0
-     under the current maryada is eligible, no extra filtering. (verseToBani
-     is built from baniInfo, so any id that appears here is one the sidebar
-     would list.) Returns the full baniInfo entry, or null if no bani contains
-     the verse. */
+     Returns the full baniInfo entry (meta + verses + sectionLabels), or null
+     if the verse isn't part of any auto-detect bani — caller should fall back
+     to plain shabad context. */
   function findBaniForVerse(verseId, preferBaniId = null) {
     const baniIds = verseToBani.get(verseId)
     if (!baniIds || baniIds.length === 0) return null
@@ -504,22 +500,12 @@ export function SearchApp({ data }) {
       const e = baniInfo.get(preferBaniId)
       if (e?.verses.length > 0) return e
     }
-    // Pass 1 — curated nitnem-priority list, in declared order.
     for (const id of KIRTAN_AUTO_BANI_IDS) {
       if (!baniIds.includes(id)) continue
       const e = baniInfo.get(id)
       if (e?.verses.length > 0) return e
     }
-    // Pass 2 — any other sidebar-visible bani; smallest wins so a small named
-    // composition beats a sprawling raag-wide listing when both contain the
-    // verse (e.g. Sadu Sahib's 39 verses preferred over Ramkali raag's 375).
-    let best = null
-    for (const id of baniIds) {
-      const e = baniInfo.get(id)
-      if (!e || e.verses.length === 0) continue
-      if (!best || e.verses.length < best.verses.length) best = e
-    }
-    return best
+    return null
   }
 
   /* ── BroadcastChannel ──────────────────────────────────────── */
@@ -688,14 +674,7 @@ export function SearchApp({ data }) {
           const currentVerseId = bcastDvRef.current?.ID
           const currentBaniIds = currentVerseId ? (verseToBani.get(currentVerseId) || []) : []
           const matchBaniIds   = verseToBani.get(match.ID) || []
-          // Pick the most relevant shared bani: prefer the curated nitnem
-          // list (matches `findBaniForVerse`'s priority pass), then fall back
-          // to ANY shared bani in the sidebar — so jumps within Sadu Sahib,
-          // any vaar, or any other sidebar bani also skip the 3-retry guard,
-          // not just nitnem ones.
-          const sharedBaniId =
-            currentBaniIds.find(b => matchBaniIds.includes(b) && KIRTAN_AUTO_BANI_IDS.includes(b))
-            ?? currentBaniIds.find(b => matchBaniIds.includes(b))
+          const sharedBaniId   = currentBaniIds.find(b => matchBaniIds.includes(b) && KIRTAN_AUTO_BANI_IDS.includes(b))
           if (sharedBaniId) {
             const entry = baniInfo.get(sharedBaniId)
             const wrapped = entry?.verses.find(v => v.ID === match.ID)
