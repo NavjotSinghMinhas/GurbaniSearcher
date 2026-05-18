@@ -225,33 +225,56 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
   // every interim event.
   const pool = (hasCtx && !allowCrossShabad) ? contextShabadVerses : verses
 
-  // Identify the verse RIGHT AFTER the current one in the context. When the
-  // singer is transitioning forward, recent words still partially match the
-  // current verse (residual inertia) while new words match the next verse —
-  // a small score boost on the next verse lets that "old tail + new head"
-  // pattern outrank the current verse's inertia without waiting for the
-  // current verse's matches to age out of the rolling window. Tail words
-  // matching the next verse strengthen the boost further.
+  // POSITIONAL MATCHING: only the trailing `RECENT` settled words count toward
+  // the matched score. Without this, when the singer transitions to the next
+  // verse, the just-abandoned verse's words still sit in the 8-word rolling
+  // window and dominate the raw match count — causing the highlight to
+  // flicker back and forth between the new and the old verse for several
+  // events as Chrome's transcript wobbles. With recency weighting, the old
+  // verse's matches "age out" of the scoring window within ~3 spoken words.
+  const RECENT = 3
+  const recentSettled = settled.slice(-RECENT)
+
+  // Tail-match signals drive the transition responsiveness:
+  //  - currentTailMatch → current verse's inertia FADES as the singer moves
+  //    past it (so a verse no longer being recognised in the recent tail
+  //    isn't artificially propped up).
+  //  - nextTailMatch    → boosts the next-verse score proportionally, so
+  //    transition fires as soon as ~half the next verse is recognised.
+  const tail = windowed.slice(-3)
+  let currentTailMatch = 0
   let nextInCtx = null
   let nextTailMatch = 0
   if (hasCtx && contextShabadVerses) {
+    const curWords = verseWordsMap.get(contextVerse.ID)
+    if (curWords && curWords.length > 0) {
+      currentTailMatch = wordMatchCount(tail, curWords)
+    }
     const idx = contextShabadVerses.indexOf(contextVerse)
     if (idx >= 0 && idx + 1 < contextShabadVerses.length) {
       nextInCtx = contextShabadVerses[idx + 1]
       const nextWords = verseWordsMap.get(nextInCtx.ID)
       if (nextWords && nextWords.length > 0) {
-        // Look at the latest portion of the window (the bit Chrome is
-        // currently producing) — if those words match the next verse, the
-        // transition is happening RIGHT NOW.
-        const tail = windowed.slice(-3)
         nextTailMatch = wordMatchCount(tail, nextWords)
       }
     }
   }
 
+  // Targeted tie-breaker: iterate nextInCtx FIRST, then the rest of the pool
+  // in natural array order. Strict `score > bestScore` means whichever verse
+  // takes the lead first keeps it on ties — so by visiting next first, ties
+  // involving it (common in Salok M9 where many sloks share "ਕਹੁ ਨਾਨਕ …")
+  // resolve to next instead of an earlier slok. Other-vs-other ties still
+  // resolve to whichever verse appears earlier in array order.
+  let iterPool = pool
+  if (hasCtx && pool === contextShabadVerses && nextInCtx) {
+    iterPool = [nextInCtx]
+    for (const v of contextShabadVerses) if (v !== nextInCtx) iterPool.push(v)
+  }
+
   let best = null, bestScore = 0
 
-  for (const v of pool) {
+  for (const v of iterPool) {
     let minMatch, inertia
     if (!hasCtx) {
       // Discovery: no surrounding shabad to anchor on, so demand a slightly
@@ -259,7 +282,13 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
       // a candidate never appears mid-singing.
       minMatch = 2.5; inertia = 0
     } else if (v.ID === contextVerse.ID) {
-      minMatch = 1; inertia = 2
+      // Current verse inertia FADES with currentTailMatch: full anchor (2)
+      // when the latest words still match it; halved (1) when one stray
+      // recent word still matches; zero when the singer has clearly moved on.
+      // Without this fade, old matches still sitting in the 8-word rolling
+      // window kept the current verse winning long past the transition.
+      minMatch = 1
+      inertia  = Math.min(currentTailMatch, 2)
     } else if (ctxSet?.has(v.ID)) {
       minMatch = 2; inertia = 1
     } else {
@@ -270,7 +299,7 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
     const vWords = verseWordsMap.get(v.ID)
     if (!vWords || vWords.length === 0) continue
 
-    let matched = wordMatchCount(settled, vWords)
+    let matched = wordMatchCount(recentSettled, vWords)
     // Trailing partial word — full credit if it actually matches a verse
     // word (Chrome may have already committed it internally), half credit
     // if it's a prefix of some longer verse word (still being recognised).
@@ -282,10 +311,11 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
 
     let score = matched + inertia
     // Sequential-transition boost. +1 baseline when v is the very next verse
-    // in context, plus an extra +1 if the latest tail of the window already
-    // matches it — when both fire, even a partial 1.5-word read of the next
-    // verse can outrank the current verse holding 2-match inertia.
-    if (v === nextInCtx) score += 1 + (nextTailMatch >= 2 ? 1 : 0)
+    // in context, plus +1 for every tail-word that matches it (capped at 2).
+    // Combined with the fading current-inertia above, the transition fires
+    // as soon as ~half the next verse's words are in the rolling window,
+    // not when the entire next verse has been recognised.
+    if (v === nextInCtx) score += 1 + Math.min(nextTailMatch, 2)
     if (score > bestScore) { bestScore = score; best = v }
   }
 
@@ -640,9 +670,17 @@ export function SearchApp({ data }) {
       for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
       setKirtanTranscript(transcript)
       const approved = kirtanApprovedRef.current
+      // Use the ACTIVE verse (where the highlight currently is), not the
+      // window anchor (bcastDv). With verseCount > 1 the active highlight
+      // can sit anchor+1 or anchor+2 inside the visible window, so passing
+      // the anchor would make `nextInCtx` always point at `anchor+1` —
+      // which is no longer "the next verse the singer is moving toward"
+      // once they're already past it. That misalignment caused the Salok
+      // M9 tie-break to favour earlier slok-1 instead of the real next.
+      const ctxVerse = approved ? (bcastActiveRef.current ?? bcastDvRef.current) : null
       const match = smartMatchKirtan(
         e.results, verses,
-        approved ? bcastDvRef.current  : null,
+        ctxVerse,
         approved ? bcastSvsRef.current : null,
         verseWordsMap
       )
@@ -663,6 +701,13 @@ export function SearchApp({ data }) {
           // within it. When it does shift, snap to the page boundary so the new
           // window aligns with the same chunking that arrow keys use.
           kirtanShabadCandidateRef.current = null
+          // Sync update the refs alongside setState so the very next onresult
+          // event (which can fire before React commits the render and runs the
+          // ref-syncing useEffect) sees the up-to-date active verse — without
+          // this, `nextInCtx` in the next matcher call is computed off the
+          // STALE active and points one verse behind where the singer
+          // actually is, sending the highlight to an earlier slok.
+          bcastActiveRef.current = svsMatch
           setBcastActive(svsMatch)
           const dispCount   = displaySettingsRef.current.verseCount || 1
           const anchorIdx   = bcastDvRef.current ? svs.indexOf(bcastDvRef.current) : -1
@@ -672,6 +717,7 @@ export function SearchApp({ data }) {
           if (!inWindow && matchIdx >= 0) {
             const newAnchorIdx = Math.floor(matchIdx / dispCount) * dispCount
             anchorToPush       = svs[newAnchorIdx]
+            bcastDvRef.current = anchorToPush
             setBcastDv(anchorToPush)
           }
           pushBroadcast(anchorToPush, displaySettingsRef.current, true)
@@ -685,7 +731,11 @@ export function SearchApp({ data }) {
           //   b) Otherwise it's a genuine cross-shabad — keep the existing
           //      3-consecutive-match safeguard, but after committing, still
           //      try to attach a bani context for the new shabad.
-          const currentVerseId = bcastDvRef.current?.ID
+          // "Current" for this check = the active highlight, mirroring what
+          // smartMatchKirtan uses as contextVerse. Without this, a window
+          // anchor verse from earlier in a bani could shadow the actual
+          // verse the singer is on when checking shared-bani membership.
+          const currentVerseId = (bcastActiveRef.current ?? bcastDvRef.current)?.ID
           const currentBaniIds = currentVerseId ? (verseToBani.get(currentVerseId) || []) : []
           const matchBaniIds   = verseToBani.get(match.ID) || []
           // Pick the most relevant shared bani: prefer the curated nitnem
