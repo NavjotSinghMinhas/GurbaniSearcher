@@ -338,8 +338,7 @@ export function SearchApp({ data }) {
   /* ── BROADCAST PANEL ───────────────────────────────────────── */
   const [bcastVerse, setBcastVerse] = useState(null)
   const [bcastSvs,   setBcastSvs]   = useState([])
-  const [bcastDv,    setBcastDv]    = useState(null)   // window anchor — first verse of the visible/projected window
-  const [bcastActive, setBcastActive] = useState(null) // currently-highlighted verse (kirtan-tracked or user-selected)
+  const [bcastDv,    setBcastDv]    = useState(null)
   const [bcastLive,  setBcastLive]  = useState(false) // true = actively sending to display tab
   const [bcastBani,  setBcastBani]  = useState(null)  // bani meta when broadcasting a whole bani
   const [bcastSectionLabels, setBcastSectionLabels] = useState(null)
@@ -368,7 +367,6 @@ export function SearchApp({ data }) {
   const debounceRef        = useRef(null)
   const inputRef           = useRef(null)
   const bcastDvRef         = useRef(null)
-  const bcastActiveRef     = useRef(null)
   const bcastSvsRef        = useRef([])
   const bcastLiveRef       = useRef(false)
   const displaySettingsRef = useRef(displaySettings)
@@ -376,7 +374,6 @@ export function SearchApp({ data }) {
 
   useEffect(() => { kirtanModeRef.current      = kirtanMode      }, [kirtanMode])
   useEffect(() => { bcastDvRef.current         = bcastDv         }, [bcastDv])
-  useEffect(() => { bcastActiveRef.current     = bcastActive     }, [bcastActive])
   useEffect(() => { bcastSvsRef.current        = bcastSvs        }, [bcastSvs])
   useEffect(() => { bcastLiveRef.current       = bcastLive       }, [bcastLive])
   useEffect(() => { displaySettingsRef.current = displaySettings }, [displaySettings])
@@ -575,7 +572,6 @@ export function SearchApp({ data }) {
         if (next !== idx) {
           const v = svs[next]
           setBcastDv(v)
-          setBcastActive(v)
           if (bcastLiveRef.current) {
             pushBroadcast(v, displaySettingsRef.current, kirtanModeRef.current === 'auto')
           }
@@ -629,25 +625,10 @@ export function SearchApp({ data }) {
         // otherwise the active highlight, indexOf, and arrow-key nav all break.
         const svsMatch = svs.find(v => v.ID === match.ID)
         if (svsMatch) {
-          // Match is within the current shabad — navigate and clear any pending switch.
-          // Active highlight always follows the kirtan; the window anchor only shifts
-          // if the new active falls outside the currently-visible window, so an
-          // operator's chosen multi-line view stays stable while the singer moves
-          // within it. When it does shift, snap to the page boundary so the new
-          // window aligns with the same chunking that arrow keys use.
+          // Match is within the current shabad — navigate and clear any pending switch
           kirtanShabadCandidateRef.current = null
-          setBcastActive(svsMatch)
-          const dispCount   = displaySettingsRef.current.verseCount || 1
-          const anchorIdx   = bcastDvRef.current ? svs.indexOf(bcastDvRef.current) : -1
-          const matchIdx    = svs.indexOf(svsMatch)
-          const inWindow    = anchorIdx >= 0 && matchIdx >= anchorIdx && matchIdx < anchorIdx + dispCount
-          let anchorToPush  = bcastDvRef.current
-          if (!inWindow && matchIdx >= 0) {
-            const newAnchorIdx = Math.floor(matchIdx / dispCount) * dispCount
-            anchorToPush       = svs[newAnchorIdx]
-            setBcastDv(anchorToPush)
-          }
-          pushBroadcast(anchorToPush, displaySettingsRef.current, true)
+          setBcastDv(svsMatch)
+          pushBroadcast(svsMatch, displaySettingsRef.current, true)
         } else {
           // Match is from a different shabad. Two fast paths first:
           //   a) If the current bcast verse AND the new match both live in
@@ -817,7 +798,6 @@ export function SearchApp({ data }) {
     setBcastVerse(verse)
     setBcastSvs(svs)
     setBcastDv(verse)
-    setBcastActive(verse)
     setBcastLive(true)
     setBcastBani(bani)
     setBcastSectionLabels(sectionLabels)
@@ -873,18 +853,13 @@ export function SearchApp({ data }) {
     setBcastVerse(null)
     setBcastSvs([])
     setBcastDv(null)
-    setBcastActive(null)
     setBcastLive(false)
     setBcastBani(null)
     setBcastSectionLabels(null)
   }
 
   function selectBcastVerse(verse) {
-    // Manual selection — snap both anchor and active to the clicked verse so
-    // the window starts here (consistent with what arrow keys do at a page
-    // boundary). Auto-detect is the only path that lets them drift apart.
     setBcastDv(verse)
-    setBcastActive(verse)
     focusedPanelRef.current = 'broadcast'
     if (bcastLiveRef.current) {
       pushBroadcast(verse, displaySettingsRef.current, kirtanModeRef.current === 'auto')
@@ -1130,7 +1105,6 @@ export function SearchApp({ data }) {
             verse={bcastVerse}
             shabadVerses={bcastSvs}
             displayVerse={bcastDv}
-            activeVerse={bcastActive}
             bani={bcastBani}
             sectionLabels={bcastSectionLabels}
             displaySettings={displaySettings}
@@ -1428,20 +1402,15 @@ function BaniRow({ entry, active, onClick }) {
 /* Locked to what is live. Shows display controls. No close button.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    renders dividers like "ਪਉੜੀ 1" inline in the verse list (mirrors preview panel). */
-function BroadcastPanel({ verse, shabadVerses, displayVerse, activeVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
   const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
   const count      = displaySettings.verseCount || 1
-  // displayVerse = window anchor (first verse of the visible window);
-  // activeVerse  = currently-highlighted verse (kirtan-tracked or user-selected).
-  // They diverge when the kirtan moves to the next verse WITHIN the current
-  // window, so the multi-line view stays put while the highlight advances.
   // Identity by reference — duplicate verses (refrains) share IDs.
-  const effectiveActive = activeVerse ?? displayVerse
   const anchorIdx  = displayVerse ? shabadVerses.indexOf(displayVerse) : -1
   const verseWindow = anchorIdx !== -1
     ? shabadVerses.slice(anchorIdx, Math.min(anchorIdx + count, shabadVerses.length))
     : displayVerse ? [displayVerse] : []
-  const transOpts  = getTranslationOptions(effectiveActive?.Translations)
+  const transOpts  = getTranslationOptions(displayVerse?.Translations)
   const activeRef  = useRef(null)
   const [ctrlOpen, setCtrlOpen] = useState(false)
   const jumpRef = useRef(null)
@@ -1466,7 +1435,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, activeVerse, bani, 
       return
     }
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
-  }, [activeVerse, displayVerse, outlineMode, pendingJumpRowId])
+  }, [displayVerse, outlineMode, pendingJumpRowId])
 
   function jumpToSection(item) {
     setPendingJumpRowId(item.rowId)
@@ -1628,11 +1597,8 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, activeVerse, bani, 
           <p className="sp-verses-hint">↑ ↓ navigate · broadcasting updates live</p>
           {shabadVerses.map((v, i) => {
             // Identity by reference — duplicate verses (refrains) share IDs.
-            // .active follows the kirtan-tracked highlight; .in-window covers the
-            // remaining verses of the visible/projected window so the operator can
-            // see at a glance which lines are on the display tab right now.
-            const isActive   = effectiveActive === v
-            const isInWindow = anchorIdx !== -1 && i >= anchorIdx && i < anchorIdx + count && !isActive
+            const isAnchor   = displayVerse === v
+            const isInWindow = anchorIdx !== -1 && i > anchorIdx && i < anchorIdx + count
             const rowId      = v.__rowId ?? v.ID
             const label      = sectionLabels?.get(rowId)
             const isJumpTarget = label && pendingJumpRowId === rowId
@@ -1640,8 +1606,8 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, activeVerse, bani, 
               <div key={v.__rowId ?? `${i}-${v.ID}`}>
                 {label && <BookmarkLabel label={label} onZoomOut={() => setOutlineMode(true)} innerRef={isJumpTarget ? jumpRef : undefined} />}
                 <div
-                  ref={isActive ? activeRef : null}
-                  className={`sp-verse${isActive ? ' active' : isInWindow ? ' in-window' : ''}`}
+                  ref={isAnchor ? activeRef : null}
+                  className={`sp-verse${isAnchor ? ' active' : isInWindow ? ' in-window' : ''}`}
                   onClick={() => onSelectVerse(v)}
                   role="button" tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
