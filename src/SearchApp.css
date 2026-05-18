@@ -292,6 +292,17 @@
   font-style: italic;
 }
 
+.sa-kirtan-error {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--danger);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.3);
+  padding: 6px 10px;
+  border-radius: 8px;
+  line-height: 1.35;
+}
+
 .sa-kirtan-candidate {
   background: var(--surface-2);
   border: 1px solid var(--border);
