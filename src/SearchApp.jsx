@@ -1153,8 +1153,9 @@ export function SearchApp({ data }) {
             <p className="sa-hint">{MODES.find(m => m.id === mode)?.hint}</p>
           </div>
 
-          {/* kirtan listener */}
-          <div className="sa-kirtan">
+          {/* kirtan listener — hidden on mobile: iOS lacks a Punjabi voice model
+              and mobile Chrome's speech service is too flaky for live kirtan. */}
+          {!IS_MOBILE && <div className="sa-kirtan">
             {kirtanMode === 'off' ? (
               <button
                 className="sa-kirtan-start"
@@ -1194,7 +1195,7 @@ export function SearchApp({ data }) {
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* results / recent history */}
           <div className="sa-results">
@@ -1244,7 +1245,8 @@ export function SearchApp({ data }) {
         )}
 
         {/* ── BROADCAST PANEL ── (locked, no close while live) */}
-        {bcastPanelOpen && (
+        {/* Broadcasting is for desktop kirtan operators — hide on mobile. */}
+        {bcastPanelOpen && !IS_MOBILE && (
           <BroadcastPanel
             verse={bcastVerse}
             shabadVerses={bcastSvs}
@@ -1387,9 +1389,11 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
         </div>
       </div>
 
-      <button className="sp-broadcast-btn sp-go-live-btn" onClick={onSendToBroadcast}>
-        ▶ Send to Broadcast
-      </button>
+      {!IS_MOBILE && (
+        <button className="sp-broadcast-btn sp-go-live-btn" onClick={onSendToBroadcast}>
+          ▶ Send to Broadcast
+        </button>
+      )}
 
       {outlineMode ? (
         <OutlineList items={outlineItems} onJump={jumpToSection} onBack={() => setOutlineMode(false)} />
