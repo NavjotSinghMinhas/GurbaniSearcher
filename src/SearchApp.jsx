@@ -6,11 +6,6 @@ import './SearchApp.css'
 const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
 
 const CHROME       = 'webkitSpeechRecognition' in window
-// Mobile Chrome handles speech recognition differently than desktop: `continuous`
-// is unreliable (often auto-stops on the first silence regardless), and the
-// engine is more sensitive to rapid R.start() calls. We adapt the settings
-// when running on a mobile device and rely on onend-restart to fake continuity.
-const IS_MOBILE    = typeof navigator !== 'undefined' && /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '')
 const CHANNEL_NAME = 'gurbani-display'
 const HISTORY_KEY  = 'gurbani-history'
 const SETTINGS_KEY = 'gurbani-disp-settings'
@@ -362,8 +357,6 @@ export function SearchApp({ data }) {
   const [kirtanMode,       setKirtanMode]       = useState('off')
   const [kirtanCandidate,  setKirtanCandidate]  = useState(null)
   const [kirtanTranscript, setKirtanTranscript] = useState('')
-  const [kirtanError,      setKirtanError]      = useState(null)  // last recognition error surfaced to the UI
-  const [kirtanMicActive,  setKirtanMicActive]  = useState(false) // true between onaudiostart and onaudioend
 
   /* refs (stable across renders for callbacks/effects) */
   const channelRef         = useRef(null)
@@ -614,13 +607,7 @@ export function SearchApp({ data }) {
     const verseWordsMap = kirtanVerseWordsRef.current
     /* eslint-disable no-undef */
     const R = new webkitSpeechRecognition()
-    // Android Chrome ignores `continuous` (or honours it only until the first
-    // pause) — running with continuous=false plus a throttled onend restart is
-    // far more reliable on mobile and behaves the same on desktop. Interim
-    // results stay on so we still see partial words while singing.
-    R.continuous     = !IS_MOBILE
-    R.interimResults = true
-    R.lang           = 'pa-IN'
+    R.continuous = true; R.interimResults = true; R.lang = 'pa-IN'
     R.onresult = e => {
       let transcript = ''
       for (let i = 0; i < e.results.length; i++) transcript += e.results[i][0].transcript
@@ -705,42 +692,12 @@ export function SearchApp({ data }) {
         }
       }
     }
-    R.onerror = e => {
-      console.warn('[kirtan] error:', e.error, e.message)
-      // 'no-speech' fires constantly on quiet stretches — not actionable.
-      // 'aborted' fires when we stop intentionally — not actionable either.
-      if (e.error && e.error !== 'no-speech' && e.error !== 'aborted') {
-        setKirtanError(e.error === 'not-allowed' ? 'Microphone access denied. Allow mic in browser settings.'
-                     : e.error === 'language-not-supported' ? 'Punjabi voice recognition not supported on this device.'
-                     : e.error === 'network' ? 'Voice recognition needs internet.'
-                     : `Recognition error: ${e.error}`)
-      }
-    }
-    R.onstart      = () => { setKirtanError(null) }
-    R.onaudiostart = () => { setKirtanMicActive(true) }
-    R.onaudioend   = () => { setKirtanMicActive(false) }
-    R.onend = () => {
-      if (kirtanModeRef.current === 'off') return
-      // Restart after a small delay — back-to-back R.start() throws
-      // InvalidStateError on Android Chrome. The delay also gives the
-      // mobile speech engine breathing room between utterances.
-      setTimeout(() => {
-        if (kirtanModeRef.current === 'off') return
-        try { R.start() }
-        catch (err) { console.warn('[kirtan] restart failed:', err?.message || err) }
-      }, IS_MOBILE ? 350 : 100)
-    }
-    try { R.start() }
-    catch (err) {
-      console.error('[kirtan] start failed:', err)
-      setKirtanError('Could not start recognition. Try reloading.')
-      return
-    }
+    R.onerror = () => {}
+    R.onend   = () => { if (kirtanModeRef.current !== 'off') try { R.start() } catch { /* ok */ } }
+    R.start()
     kirtanRecRef.current = R
     setKirtanCandidate(null)
     setKirtanTranscript('')
-    setKirtanError(null)
-    setKirtanMicActive(false)
     // If something is already being broadcast, the user has already chosen the
     // shabad/bani — skip the listening + confirmation phase, lock onto that as
     // the context, and let kirtan auto-navigate within it. Cross-shabad
@@ -763,8 +720,6 @@ export function SearchApp({ data }) {
     setKirtanMode('off')
     setKirtanCandidate(null)
     setKirtanTranscript('')
-    setKirtanError(null)
-    setKirtanMicActive(false)
     if (bcastDvRef.current) {
       pushBroadcast(bcastDvRef.current, displaySettingsRef.current, false)
     }
@@ -1098,13 +1053,10 @@ export function SearchApp({ data }) {
                 <div className="sa-kirtan-top">
                   <div className="sa-kirtan-status">
                     <span className={`sa-kirtan-dot ${kirtanMode === 'auto' ? 'auto' : 'listening'}`} />
-                    {kirtanMode === 'auto' ? 'Auto-broadcasting kirtan'
-                     : kirtanMicActive   ? 'Listening for kirtan…'
-                     : 'Waiting for microphone…'}
+                    {kirtanMode === 'auto' ? 'Auto-broadcasting kirtan' : 'Listening for kirtan…'}
                   </div>
                   <button className="sa-kirtan-stop" onClick={stopKirtan}>Stop</button>
                 </div>
-                {kirtanError && <p className="sa-kirtan-error">⚠ {kirtanError}</p>}
                 {kirtanTranscript && <p className="sa-kirtan-transcript"><em>{kirtanTranscript}</em></p>}
                 {kirtanCandidate ? (
                   <div className="sa-kirtan-candidate">

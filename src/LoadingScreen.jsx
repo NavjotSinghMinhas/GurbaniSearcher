@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { streamParseGurbani } from './streamParseGurbani.js'
 
 const FACTS = [
   '36 Saints. 31 Ragas. One truth — gifted to every soul, without exception.',
@@ -31,7 +30,6 @@ export function LoadingScreen({ dataReady, onReady }) {
   const [factIndex] = useState(
     () => Math.floor(Math.random() * FACTS.length)
   )
-  const [progress, setProgress] = useState(0)  // 0..100, parse-phase progress
 
   // Read + parse from OPFS as soon as the file is confirmed ready
   useEffect(() => {
@@ -43,25 +41,19 @@ export function LoadingScreen({ dataReady, onReady }) {
       const root   = await navigator.storage.getDirectory()
       const handle = await root.getFileHandle('gurbani.min.json')
       const file   = await handle.getFile()
+      const text   = await file.text()
 
       if (cancelled) return
 
-      // LFS-pointer sentinel check on the first ~20 bytes only — no full read.
-      const headText = await file.slice(0, 20).text()
-      if (headText.startsWith('version https://git-')) {
+      if (text.startsWith('version https://git-')) {
+        // Stale LFS pointer cached — wipe and reload so it re-downloads the real file
         try { await root.removeEntry('gurbani.min.json') }      catch { /* ignore */ }
         try { await root.removeEntry('gurbani.min.json.done') } catch { /* ignore */ }
         window.location.reload()
         return
       }
 
-      // Stream-parse so we never hold the whole 321 MB string + the parsed
-      // tree at the same time — that combo crashes mobile Chrome tabs.
-      const data = await streamParseGurbani(file, p => {
-        if (!cancelled) setProgress(Math.round(p * 100))
-      })
-      if (cancelled) return
-      onReady(data)
+      onReady(JSON.parse(text))
     }
 
     load().catch(err => console.error('[LoadingScreen] OPFS read failed:', err))
@@ -81,7 +73,7 @@ export function LoadingScreen({ dataReady, onReady }) {
           <span className="ls-bounce-dot" />
         </div>
 
-        <p className="ls-label">{progress > 0 ? `Indexing scripture · ${progress}%` : 'Initializing search engine'}</p>
+        <p className="ls-label">Initializing search engine</p>
 
         {/* key re-mounts the element on each fact change, triggering the slide-in */}
         <p className="ls-sublabel ls-fact" key={factIndex}>{FACTS[factIndex]}</p>
