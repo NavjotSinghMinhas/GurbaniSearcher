@@ -540,6 +540,7 @@ export function SearchApp({ data }) {
 
   /* ── online/offline ────────────────────────────────────────── */
   useEffect(() => {
+    if (IS_MOBILE) return
     const up = () => setOnline(true)
     const dn = () => setOnline(false)
     window.addEventListener('online',  up)
@@ -942,14 +943,18 @@ export function SearchApp({ data }) {
               Broadcasting
             </span>
           )}
-          <span
-            className={`sa-net-dot ${online ? 'up' : 'down'}`}
-            title={online ? 'Online — kirtan listening available' : 'Offline — kirtan listening unavailable'}
-          />
-          <span
-            className="sa-net-label"
-            title={online ? 'Online — kirtan listening available' : 'Offline — kirtan listening unavailable'}
-          >{online ? 'Online' : 'Offline'}</span>
+          {!IS_MOBILE && (
+            <>
+              <span
+                className={`sa-net-dot ${online ? 'up' : 'down'}`}
+                title={online ? 'Online — kirtan listening available' : 'Offline — kirtan listening unavailable'}
+              />
+              <span
+                className="sa-net-label"
+                title={online ? 'Online — kirtan listening available' : 'Offline — kirtan listening unavailable'}
+              >{online ? 'Online' : 'Offline'}</span>
+            </>
+          )}
           <button
             className="sa-icon-btn"
             onClick={() => setTheme(t => t === 'dark' ? 'light' : 'dark')}

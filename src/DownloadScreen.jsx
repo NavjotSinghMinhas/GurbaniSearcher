@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 
-const TIPS = [
+const IS_MOBILE = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+const ALL_TIPS = [
   {
     icon: '🔍',
     title: 'Full Gurbani, offline, always with you',
@@ -10,6 +12,7 @@ const TIPS = [
     icon: '🎙️',
     title: 'Voice search needs internet',
     body: 'Every shabad sung in kirtan carries the Guru\'s words. Now you can find them, in real time, as the kirtan flows.',
+    voice: true,
   },
   {
     icon: '⚡',
@@ -27,6 +30,8 @@ const TIPS = [
     body: 'This download happens just once. Every future load is instant, online or offline.',
   },
 ]
+
+const TIPS = IS_MOBILE ? ALL_TIPS.filter(t => !t.voice) : ALL_TIPS
 
 function fmt(bytes) {
   if (!bytes) return '—'
@@ -116,10 +121,14 @@ export function DownloadScreen({ progress, bytesDownloaded, totalBytes, speed })
 
         <p className="dl-footer">
           <span>Text search works offline</span>
-          <span className="dl-footer-sep">·</span>
-          <span>Voice mode requires internet</span>
-          <span className="dl-footer-sep">·</span>
-          <span>Voice search is Chrome only for now</span>
+          {!IS_MOBILE && (
+            <>
+              <span className="dl-footer-sep">·</span>
+              <span>Voice mode requires internet</span>
+              <span className="dl-footer-sep">·</span>
+              <span>Voice search is Chrome only for now</span>
+            </>
+          )}
         </p>
       </div>
     </div>
