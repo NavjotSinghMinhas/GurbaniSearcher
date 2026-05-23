@@ -6,6 +6,7 @@ import './SearchApp.css'
 const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
 
 const CHROME       = 'webkitSpeechRecognition' in window
+const IS_MOBILE    = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
 const CHANNEL_NAME = 'gurbani-display'
 const HISTORY_KEY  = 'gurbani-history'
 const SETTINGS_KEY = 'gurbani-disp-settings'

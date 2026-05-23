@@ -86,12 +86,26 @@ export async function streamParseGurbani(blob, onProgress) {
     }
   }
 
+  let lastPct = -1
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
     bytesRead += value.byteLength
     feed(decoder.decode(value, { stream: true }))
-    if (onProgress && total > 0) onProgress(bytesRead / total)
+    if (onProgress && total > 0) {
+      const pct = Math.floor((bytesRead / total) * 100)
+      if (pct !== lastPct) {
+        lastPct = pct
+        onProgress(bytesRead / total)
+        // `await reader.read()` yields a microtask but the browser doesn't
+        // get a paint window if subsequent chunks resolve immediately (OPFS
+        // chunks come back from a cached file with effectively zero IO wait).
+        // setTimeout(0) is a macrotask, so the renderer can flush a frame
+        // between progress updates — without this the percentage often jumps
+        // straight from 0% to 100% with no intermediate paint.
+        await new Promise(resolve => setTimeout(resolve, 0))
+      }
+    }
   }
   const tail = decoder.decode()
   if (tail) feed(tail)

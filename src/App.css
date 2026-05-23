@@ -248,6 +248,40 @@
   animation: tipSlideIn 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
 }
 
+.ls-progress {
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 22px;
+}
+
+.ls-progress-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.ls-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7e14ff, #c46eff);
+  border-radius: 6px;
+  transition: width 0.18s linear;
+  box-shadow: 0 0 14px var(--accent-glow);
+}
+
+.ls-progress-pct {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 38px;
+  text-align: right;
+}
+
 /* ─── update banner ───────────────────────────────────────────────────────── */
 
 .update-banner {

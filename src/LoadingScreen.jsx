@@ -72,13 +72,14 @@ export function LoadingScreen({ dataReady, onReady }) {
 
         <h1 className="screen-title">Gurbani Search</h1>
 
-        <div className="ls-bounce-row" role="status" aria-label="Loading">
-          <span className="ls-bounce-dot" />
-          <span className="ls-bounce-dot" />
-          <span className="ls-bounce-dot" />
-        </div>
+        <p className="ls-label">Initializing search engine</p>
 
-        <p className="ls-label">{progress > 0 ? `Indexing scripture · ${progress}%` : 'Initializing search engine'}</p>
+        <div className="ls-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
+          <div className="ls-progress-track">
+            <div className="ls-progress-fill" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="ls-progress-pct">{progress}%</span>
+        </div>
 
         {/* key re-mounts the element on each fact change, triggering the slide-in */}
         <p className="ls-sublabel ls-fact" key={factIndex}>{FACTS[factIndex]}</p>
