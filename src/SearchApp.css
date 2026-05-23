@@ -967,7 +967,8 @@
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
 
-.sp-btn:hover { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+.sp-btn:hover:not(:disabled) { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+.sp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .sp-stop-btn:hover { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.5); color: var(--danger); }
 
 /* send to broadcast */

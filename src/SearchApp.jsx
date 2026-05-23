@@ -397,6 +397,24 @@ export function SearchApp({ data }) {
     return map
   }, [verses])
 
+  /* Sorted list of shabad IDs for prev/next navigation. Sequential ShabadIDs
+     follow the order in the Granth. */
+  const sortedShabadIds = useMemo(
+    () => Array.from(shabadIndex.keys()).sort((a, b) => a - b),
+    [shabadIndex]
+  )
+
+  function getSiblingShabad(currentShabadId, dir) {
+    if (currentShabadId == null) return null
+    const idx = sortedShabadIds.indexOf(currentShabadId)
+    if (idx === -1) return null
+    const next = idx + dir
+    if (next < 0 || next >= sortedShabadIds.length) return null
+    const v = shabadIndex.get(sortedShabadIds[next])
+    if (!v || v.length === 0) return null
+    return { shabadId: sortedShabadIds[next], verses: v }
+  }
+
   /* ── bani index ────────────────────────────────────────────── */
   /* For each Bani: ordered list of Verses (Custom/header rows skipped), wrapped
      with a unique __rowId so duplicate verses (e.g. refrains in Japji) are still
@@ -837,6 +855,30 @@ export function SearchApp({ data }) {
     saveHistory(historyEntry(pvVerse, pvBani))
   }
 
+  /* Walk to the previous/next shabad in the preview panel. Banis are
+     contiguous readings, not shabads, so nav is suppressed in bani mode. */
+  function gotoSiblingShabadPreview(dir) {
+    if (pvBani) return
+    const sib = getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, dir)
+    if (!sib) return
+    const first = sib.verses[0]
+    setPvVerse(first); setPvSvs(sib.verses); setPvDv(first)
+    setPvBani(null); setPvSectionLabels(null)
+  }
+
+  function gotoSiblingShabadBcast(dir) {
+    if (bcastBani) return
+    const sib = getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, dir)
+    if (!sib) return
+    const first = sib.verses[0]
+    if (bcastLive) {
+      startBroadcast(first, sib.verses, kirtanModeRef.current === 'auto')
+    } else {
+      setBcastVerse(first); setBcastSvs(sib.verses); setBcastDv(first)
+      setBcastBani(null); setBcastSectionLabels(null)
+    }
+  }
+
   /* stop live — panel stays open */
   function stopBroadcast() {
     setBcastLive(false)
@@ -1101,6 +1143,10 @@ export function SearchApp({ data }) {
             isBroadcasting={isBroadcasting}
             onSelectVerse={selectPvVerse}
             onSendToBroadcast={sendToBroadcast}
+            onPrevShabad={() => gotoSiblingShabadPreview(-1)}
+            onNextShabad={() => gotoSiblingShabadPreview(1)}
+            canPrevShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, -1)}
+            canNextShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, 1)}
             onClose={() => { setShowPreview(false); setPvVerse(null); setPvBani(null); setPvSectionLabels(null) }}
             onFocus={() => { focusedPanelRef.current = 'preview' }}
           />
@@ -1123,6 +1169,10 @@ export function SearchApp({ data }) {
             onFullscreen={sendFullscreen}
             onStop={stopBroadcast}
             onResume={resumeBroadcast}
+            onPrevShabad={() => gotoSiblingShabadBcast(-1)}
+            onNextShabad={() => gotoSiblingShabadBcast(1)}
+            canPrevShabad={!bcastBani && !!getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, -1)}
+            canNextShabad={!bcastBani && !!getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, 1)}
             onClose={closeBroadcastPanel}
             onFocus={() => { focusedPanelRef.current = 'broadcast' }}
           />
@@ -1186,7 +1236,7 @@ function RecentItem({ entry, onOpen, onDelete }) {
 /* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    (rowId → label) renders dividers like "ਪਉੜੀ 1" inside the verse list. */
-function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, onSelectVerse, onSendToBroadcast, onClose, onFocus }) {
+function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const activeRef = useRef(null)
   const jumpRef   = useRef(null)
   const [outlineRequested, setOutlineMode] = useState(false)
@@ -1237,6 +1287,26 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
           </div>
         )}
         <div className="sp-actions">
+          {!bani && (
+            <>
+              <button
+                className="sp-btn"
+                onClick={onPrevShabad}
+                disabled={!canPrevShabad}
+                title="Previous shabad"
+              >
+                <IconArrowLeft />
+              </button>
+              <button
+                className="sp-btn"
+                onClick={onNextShabad}
+                disabled={!canNextShabad}
+                title="Next shabad"
+              >
+                <IconArrowRight />
+              </button>
+            </>
+          )}
           {outlineItems.length > 0 && (
             <button
               className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
@@ -1412,7 +1482,7 @@ function BaniRow({ entry, active, onClick }) {
 /* Locked to what is live. Shows display controls. No close button.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    renders dividers like "ਪਉੜੀ 1" inline in the verse list (mirrors preview panel). */
-function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onClose, onFocus }) {
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
   const count      = displaySettings.verseCount || 1
   // Identity by reference — duplicate verses (refrains) share IDs.
@@ -1475,6 +1545,26 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           </div>
         )}
         <div className="sp-actions">
+          {!bani && (
+            <>
+              <button
+                className="sp-btn"
+                onClick={onPrevShabad}
+                disabled={!canPrevShabad}
+                title="Previous shabad"
+              >
+                <IconArrowLeft />
+              </button>
+              <button
+                className="sp-btn"
+                onClick={onNextShabad}
+                disabled={!canNextShabad}
+                title="Next shabad"
+              >
+                <IconArrowRight />
+              </button>
+            </>
+          )}
           {outlineItems.length > 0 && (
             <button
               className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
