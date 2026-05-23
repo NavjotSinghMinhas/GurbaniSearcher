@@ -370,6 +370,7 @@ export function SearchApp({ data }) {
   const bcastDvRef         = useRef(null)
   const bcastSvsRef        = useRef([])
   const bcastLiveRef       = useRef(false)
+  const bcastBaniRef       = useRef(null)
   const displaySettingsRef = useRef(displaySettings)
   const focusedPanelRef    = useRef('preview')
 
@@ -377,6 +378,7 @@ export function SearchApp({ data }) {
   useEffect(() => { bcastDvRef.current         = bcastDv         }, [bcastDv])
   useEffect(() => { bcastSvsRef.current        = bcastSvs        }, [bcastSvs])
   useEffect(() => { bcastLiveRef.current       = bcastLive       }, [bcastLive])
+  useEffect(() => { bcastBaniRef.current       = bcastBani       }, [bcastBani])
   useEffect(() => { displaySettingsRef.current = displaySettings }, [displaySettings])
 
   /* ── theme ─────────────────────────────────────────────────── */
@@ -517,6 +519,33 @@ export function SearchApp({ data }) {
     return null
   }
 
+  /* Disambiguate a bani from TWO consecutive verses. A single verse like
+     "har jug jug bhagat upaya" appears in both Asa Ki Var and Rehras, and
+     priority-order alone can't tell which the singer is reading. With a
+     second verse we can pick the auto-bani where both verses appear AND the
+     second one comes after the first — strong evidence the singer is
+     actually working through that bani. */
+  function findBaniForVersePair(prevVerseId, nextVerseId) {
+    if (!prevVerseId || !nextVerseId || prevVerseId === nextVerseId) return null
+    const prevBanis = verseToBani.get(prevVerseId) || []
+    const nextBanis = verseToBani.get(nextVerseId) || []
+    if (prevBanis.length === 0 || nextBanis.length === 0) return null
+    let best = null, bestGap = Infinity
+    for (const baniId of prevBanis) {
+      if (!nextBanis.includes(baniId)) continue
+      if (!KIRTAN_AUTO_BANI_IDS.includes(baniId)) continue
+      const entry = baniInfo.get(baniId)
+      if (!entry || entry.verses.length === 0) continue
+      const prevIdx = entry.verses.findIndex(v => v.ID === prevVerseId)
+      const nextIdx = entry.verses.findIndex(v => v.ID === nextVerseId)
+      if (prevIdx === -1 || nextIdx === -1) continue
+      const gap = nextIdx - prevIdx
+      if (gap <= 0) continue
+      if (gap < bestGap) { bestGap = gap; best = entry }
+    }
+    return best
+  }
+
   /* ── BroadcastChannel ──────────────────────────────────────── */
   useEffect(() => {
     const ch = new BroadcastChannel(CHANNEL_NAME)
@@ -647,6 +676,20 @@ export function SearchApp({ data }) {
         if (svsMatch) {
           // Match is within the current shabad — navigate and clear any pending switch
           kirtanShabadCandidateRef.current = null
+          // Bani auto-detect on the second verse. If we're broadcasting a
+          // plain shabad (no bani context yet) and the singer just moved to a
+          // different verse, check whether the prev verse + new verse both
+          // belong to an auto-bani consecutively — that's the disambiguation
+          // signal we deferred at approval time.
+          const prevDv = bcastDvRef.current
+          if (!bcastBaniRef.current && prevDv && prevDv.ID !== svsMatch.ID) {
+            const baniEntry = findBaniForVersePair(prevDv.ID, svsMatch.ID)
+            const wrapped = baniEntry?.verses.find(v => v.ID === svsMatch.ID)
+            if (wrapped && baniEntry) {
+              startBroadcast(wrapped, baniEntry.verses, true, baniEntry.meta, baniEntry.sectionLabels)
+              return
+            }
+          }
           setBcastDv(svsMatch)
           pushBroadcast(svsMatch, displaySettingsRef.current, true)
         } else {
@@ -660,11 +703,19 @@ export function SearchApp({ data }) {
           //      3-consecutive-match safeguard, but after committing, still
           //      try to attach a bani context for the new shabad.
           const currentVerseId = bcastDvRef.current?.ID
-          const currentBaniIds = currentVerseId ? (verseToBani.get(currentVerseId) || []) : []
-          const matchBaniIds   = verseToBani.get(match.ID) || []
-          const sharedBaniId   = currentBaniIds.find(b => matchBaniIds.includes(b) && KIRTAN_AUTO_BANI_IDS.includes(b))
-          if (sharedBaniId) {
-            const entry = baniInfo.get(sharedBaniId)
+          // Prefer pair-based bani detection (forward-only, picks the bani
+          // where both verses appear consecutively). Fall back to the order-
+          // agnostic shared-bani lookup for refrains / backward jumps.
+          const pairBani = currentVerseId ? findBaniForVersePair(currentVerseId, match.ID) : null
+          let sharedEntry = pairBani
+          if (!sharedEntry) {
+            const currentBaniIds = currentVerseId ? (verseToBani.get(currentVerseId) || []) : []
+            const matchBaniIds   = verseToBani.get(match.ID) || []
+            const sharedBaniId   = currentBaniIds.find(b => matchBaniIds.includes(b) && KIRTAN_AUTO_BANI_IDS.includes(b))
+            if (sharedBaniId) sharedEntry = baniInfo.get(sharedBaniId)
+          }
+          if (sharedEntry) {
+            const entry = sharedEntry
             const wrapped = entry?.verses.find(v => v.ID === match.ID)
             if (entry && wrapped) {
               kirtanShabadCandidateRef.current = null
@@ -677,15 +728,24 @@ export function SearchApp({ data }) {
           if (prev?.shabadId === shabadId) {
             prev.count++
             prev.verse = match
-            if (prev.count >= 3) {
+            // Two confident finals on the same new shabad is enough evidence —
+            // each event already requires conf≥0.6 and ≥3 matched words.
+            if (prev.count >= 2) {
               kirtanShabadCandidateRef.current = null
-              const entry = findBaniForVerse(match.ID)
-              const wrapped = entry?.verses.find(v => v.ID === match.ID)
-              if (entry && wrapped) {
-                startBroadcast(wrapped, entry.verses, true, entry.meta, entry.sectionLabels)
-              } else {
-                startBroadcast(match, getShabadVerses(match), true)
+              // No shared bani with the previous context — broadcast the new
+              // shabad on its own and let subsequent verses pick a bani via
+              // the same pair-based disambiguation.
+              const shabadVerses = getShabadVerses(match)
+              if (shabadVerses.length <= 1) {
+                // Degenerate shabad — fall through to single-verse bani lookup.
+                const entry = findBaniForVerse(match.ID)
+                const wrapped = entry?.verses.find(v => v.ID === match.ID)
+                if (entry && wrapped) {
+                  startBroadcast(wrapped, entry.verses, true, entry.meta, entry.sectionLabels)
+                  return
+                }
               }
+              startBroadcast(match, shabadVerses, true)
             }
           } else {
             kirtanShabadCandidateRef.current = { shabadId, verse: match, count: 1 }
@@ -730,20 +790,35 @@ export function SearchApp({ data }) {
     if (!kirtanCandidate) return
     kirtanApprovedRef.current = true
     setKirtanMode('auto')
-    // Pick a bani context — first preferring the one already open, then any
-    // bani in the curated KIRTAN_AUTO_BANI_IDS list that contains this verse.
-    // If we find one, broadcasting the whole bani means subsequent within-bani
-    // pauri jumps stay "same shabad" and skip the 3-retry safeguard entirely.
-    const preferId  = pvBani?.ID ?? bcastBani?.ID ?? null
-    const baniEntry = findBaniForVerse(kirtanCandidate.ID, preferId)
-    const wrappedMatch = baniEntry?.verses.find(v => v.ID === kirtanCandidate.ID)
-    if (wrappedMatch && baniEntry) {
-      startBroadcast(wrappedMatch, baniEntry.verses, true, baniEntry.meta, baniEntry.sectionLabels)
-      saveHistory(historyEntry(kirtanCandidate, baniEntry.meta))
-    } else {
-      startBroadcast(kirtanCandidate, getShabadVerses(kirtanCandidate), true)
-      saveHistory(historyEntry(kirtanCandidate))
+    // If a bani is already open, stick with it — the operator has chosen.
+    const preferId = pvBani?.ID ?? bcastBani?.ID ?? null
+    if (preferId) {
+      const baniEntry = findBaniForVerse(kirtanCandidate.ID, preferId)
+      const wrappedMatch = baniEntry?.verses.find(v => v.ID === kirtanCandidate.ID)
+      if (wrappedMatch && baniEntry) {
+        startBroadcast(wrappedMatch, baniEntry.verses, true, baniEntry.meta, baniEntry.sectionLabels)
+        saveHistory(historyEntry(kirtanCandidate, baniEntry.meta))
+        return
+      }
     }
+    // Defer bani promotion. A single verse like "har jug jug bhagat upaya"
+    // belongs to multiple banis (Rehras vs Asa Ki Var) — priority order alone
+    // can't tell which the singer is reading. Broadcast the SGGS shabad first
+    // and let the second confirmed verse disambiguate the bani.
+    const shabadVerses = getShabadVerses(kirtanCandidate)
+    if (shabadVerses.length <= 1) {
+      // Degenerate shabad (just this verse) — nothing to navigate within, so
+      // fall through to any auto-bani that contains the verse.
+      const baniEntry = findBaniForVerse(kirtanCandidate.ID)
+      const wrappedMatch = baniEntry?.verses.find(v => v.ID === kirtanCandidate.ID)
+      if (wrappedMatch && baniEntry) {
+        startBroadcast(wrappedMatch, baniEntry.verses, true, baniEntry.meta, baniEntry.sectionLabels)
+        saveHistory(historyEntry(kirtanCandidate, baniEntry.meta))
+        return
+      }
+    }
+    startBroadcast(kirtanCandidate, shabadVerses, true)
+    saveHistory(historyEntry(kirtanCandidate))
   }
 
   /* ── shabad helpers ────────────────────────────────────────── */
@@ -871,6 +946,8 @@ export function SearchApp({ data }) {
     const sib = getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, dir)
     if (!sib) return
     const first = sib.verses[0]
+    // Manual nav overrides any in-flight kirtan cross-shabad tally.
+    kirtanShabadCandidateRef.current = null
     if (bcastLive) {
       startBroadcast(first, sib.verses, kirtanModeRef.current === 'auto')
     } else {

@@ -22,6 +22,11 @@ function GurbaniApp() {
           <p style={{ color: 'var(--danger)', marginTop: 16, fontSize: 14 }}>
             Failed to load Gurbani data. Please refresh to try again.
           </p>
+          {error && (
+            <p style={{ color: 'var(--muted, #888)', marginTop: 8, fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-word', maxWidth: 360 }}>
+              {error}
+            </p>
+          )}
         </div>
       </div>
     )
