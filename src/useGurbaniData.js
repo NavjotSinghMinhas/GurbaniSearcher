@@ -35,43 +35,39 @@ export function useGurbaniData() {
       if (_downloading) return
       _downloading = true
 
-      try { await root.removeEntry(OPFS_FILE) } catch { /* not there, fine */ }
-
       setStatus('downloading')
 
-      const response = await fetch(DATA_URL)
-      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      // The actual download runs in a worker so we can use
+      // createSyncAccessHandle() — createWritable() on the main thread buffers
+      // writes through memory and OOMs on mobile for a 321 MB file.
+      const worker = new Worker(
+        new URL('./gurbaniDownloadWorker.js', import.meta.url),
+        { type: 'module' }
+      )
 
-      const total = parseInt(response.headers.get('content-length') || '0', 10)
-      setTotalBytes(total)
-
-      const reader   = response.body.getReader()
-      const handle   = await root.getFileHandle(OPFS_FILE, { create: true })
-      const writable = await handle.createWritable()
-
-      let received = 0
+      let total = 0
+      let lastReceived = 0
       const samples = []
       let lastSpeedTick = 0
-      let firstChunk = true
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          // Detect LFS pointer on the first chunk without buffering the whole file
-          if (firstChunk) {
-            firstChunk = false
-            const preview = new TextDecoder().decode(value.slice(0, 20))
-            if (preview.startsWith('version https://git-')) {
-              await writable.abort()
-              throw new Error('Data file is a Git LFS pointer — host the file outside of Git LFS.')
-            }
-          }
-          await writable.write(value)
-          received += value.length
 
+      worker.onmessage = (e) => {
+        const msg = e.data
+
+        if (msg.type === 'total') {
+          total = msg.total
+          setTotalBytes(msg.total)
+          return
+        }
+
+        if (msg.type === 'progress') {
           const now = Date.now()
-          samples.push({ time: now, bytes: value.length })
-          while (samples.length > 1 && samples[0].time < now - 3000) samples.shift()
+          const delta = msg.received - lastReceived
+          lastReceived = msg.received
+
+          if (delta > 0) {
+            samples.push({ time: now, bytes: delta })
+            while (samples.length > 1 && samples[0].time < now - 3000) samples.shift()
+          }
 
           if (now - lastSpeedTick > 600) {
             lastSpeedTick = now
@@ -82,24 +78,36 @@ export function useGurbaniData() {
             }
           }
 
-          setBytesDownloaded(received)
-          if (total > 0) setProgress(received / total)
+          setBytesDownloaded(msg.received)
+          if (total > 0) setProgress(msg.received / total)
+          return
         }
-        await writable.close()
-      } catch (err) {
-        await writable.abort()
-        try { await root.removeEntry(OPFS_FILE) } catch { /* ignore */ }
-        throw err
+
+        if (msg.type === 'done') {
+          worker.terminate()
+          setStatus('parsing')
+          return
+        }
+
+        if (msg.type === 'error') {
+          worker.terminate()
+          _downloading = false
+          console.error('[GurbaniData]', msg.message)
+          setError(msg.message)
+          setStatus('error')
+        }
       }
 
-      // Sentinel written only after the full file is safely on disk
-      const doneHandle   = await root.getFileHandle(OPFS_DONE, { create: true })
-      const doneWritable = await doneHandle.createWritable()
-      await doneWritable.write(new TextEncoder().encode('1'))
-      await doneWritable.close()
+      worker.onerror = (e) => {
+        worker.terminate()
+        _downloading = false
+        const message = e?.message || 'Download worker crashed'
+        console.error('[GurbaniData]', e)
+        setError(message)
+        setStatus('error')
+      }
 
-      // Hand off to LoadingScreen for the parse phase
-      setStatus('parsing')
+      worker.postMessage({ url: DATA_URL })
     } catch (err) {
       _downloading = false
       console.error('[GurbaniData]', err)
