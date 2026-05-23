@@ -1287,26 +1287,6 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
           </div>
         )}
         <div className="sp-actions">
-          {!bani && (
-            <>
-              <button
-                className="sp-btn"
-                onClick={onPrevShabad}
-                disabled={!canPrevShabad}
-                title="Previous shabad"
-              >
-                <IconArrowLeft />
-              </button>
-              <button
-                className="sp-btn"
-                onClick={onNextShabad}
-                disabled={!canNextShabad}
-                title="Next shabad"
-              >
-                <IconArrowRight />
-              </button>
-            </>
-          )}
           {outlineItems.length > 0 && (
             <button
               className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
@@ -1355,6 +1335,27 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!bani && (
+        <div className="sp-shabad-nav">
+          <button
+            className="sp-shabad-nav-btn"
+            onClick={onPrevShabad}
+            disabled={!canPrevShabad}
+            title="Previous shabad"
+          >
+            <IconArrowLeft /> <span>Previous</span>
+          </button>
+          <button
+            className="sp-shabad-nav-btn"
+            onClick={onNextShabad}
+            disabled={!canNextShabad}
+            title="Next shabad"
+          >
+            <span>Next</span> <IconArrowRight />
+          </button>
         </div>
       )}
     </aside>
@@ -1545,26 +1546,6 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           </div>
         )}
         <div className="sp-actions">
-          {!bani && (
-            <>
-              <button
-                className="sp-btn"
-                onClick={onPrevShabad}
-                disabled={!canPrevShabad}
-                title="Previous shabad"
-              >
-                <IconArrowLeft />
-              </button>
-              <button
-                className="sp-btn"
-                onClick={onNextShabad}
-                disabled={!canNextShabad}
-                title="Next shabad"
-              >
-                <IconArrowRight />
-              </button>
-            </>
-          )}
           {outlineItems.length > 0 && (
             <button
               className={`sp-btn sp-outline-btn${outlineMode ? ' active' : ''}`}
@@ -1720,6 +1701,27 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
               </div>
             )
           })}
+        </div>
+      )}
+
+      {!bani && (
+        <div className="sp-shabad-nav">
+          <button
+            className="sp-shabad-nav-btn"
+            onClick={onPrevShabad}
+            disabled={!canPrevShabad}
+            title="Previous shabad"
+          >
+            <IconArrowLeft /> <span>Previous</span>
+          </button>
+          <button
+            className="sp-shabad-nav-btn"
+            onClick={onNextShabad}
+            disabled={!canNextShabad}
+            title="Next shabad"
+          >
+            <span>Next</span> <IconArrowRight />
+          </button>
         </div>
       )}
     </aside>

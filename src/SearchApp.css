@@ -971,6 +971,37 @@
 .sp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .sp-stop-btn:hover { background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.5); color: var(--danger); }
 
+/* prev / next shabad nav — pinned to the panel bottom */
+.sp-shabad-nav {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px 14px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+}
+.sp-shabad-nav-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sp-shabad-nav-btn:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.sp-shabad-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
 /* send to broadcast */
 .sp-broadcast-btn {
   flex-shrink: 0;
