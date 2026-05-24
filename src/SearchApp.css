@@ -1207,6 +1207,11 @@
 .sp-verse.active    { background: var(--accent-dim); border-left-color: var(--accent); }
 .sp-verse.in-window { background: rgba(168,85,247,0.04); border-left-color: rgba(168,85,247,0.2); }
 
+.sp-verse-sung {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; min-width: 16px; padding-top: 3px;
+  color: #22c55e; flex-shrink: 0;
+}
 .sp-verse-num  { font-size: 11px; color: var(--text); opacity: 0.35; min-width: 20px; padding-top: 3px; flex-shrink: 0; }
 .sp-verse-body { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 

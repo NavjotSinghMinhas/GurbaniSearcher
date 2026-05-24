@@ -163,15 +163,16 @@ function wordMatchCount(tWords, vWords) {
 // Tiers (combined match count → action):
 //   in-context, same verse:        ≥1 match  (stay; strong inertia)
 //   in-context, same shabad/bani:  ≥2 matches (cross-verse jump within ctx)
-//   different shabad:              ≥3 matches + isFinal && conf≥0.6
+//   different shabad (final):      ≥3 matches + isFinal && conf≥0.6
+//   different shabad (interim):    ≥4 matches + current shabad has <2 matches
 //   discovery (no context):        ≥2.5 matches (interim OK)
 //
-// Cross-shabad is the one path gated to confident finals — partial transcripts
-// can't pull the broadcast away from the current bani. Discovery (kirtan
-// listening with nothing selected) runs on interims so a candidate shows up
-// as soon as the singer has uttered ~3 recognisable words; otherwise we'd be
-// stuck until Chrome finalises on a silence, which during continuous kirtan
-// effectively only happens when the recogniser is stopped.
+// Chrome rarely emits finals during continuous kirtan, so cross-shabad has a
+// second trigger: when the rolling window's best in-context match drops below
+// 2 ("the singer has clearly left the current shabad"), we let interims with
+// ≥4 matched words pull out of the bani. Discovery (no context yet) always
+// runs on interims so a candidate appears as soon as the singer has uttered
+// ~3 recognisable words.
 function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVerses, verseWordsMap) {
   if (!speechResults || speechResults.length === 0) return null
 
@@ -212,9 +213,26 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
 
   const hasCtx = contextVerse != null
   const ctxSet = contextShabadVerses ? new Set(contextShabadVerses.map(v => v.ID)) : null
-  // The one path still gated to confident finals — pulling out of the
-  // current bani/shabad needs strong evidence.
-  const allowCrossShabad = isFinal && conf >= 0.6
+  // Cross-shabad has two acceptable triggers:
+  //   1. Confident final (isFinal && conf≥0.6) — original strict gate.
+  //   2. Interim where the rolling window has clearly LEFT the current shabad:
+  //      best in-context match is <2 words. Chrome rarely emits finals during
+  //      continuous kirtan, so without (2) we get stuck on the current shabad
+  //      forever when the singer moves on.
+  const strongFinal = isFinal && conf >= 0.6
+  let leftContext = false
+  if (hasCtx && !strongFinal) {
+    let bestCtxMatch = 0
+    for (const v of contextShabadVerses) {
+      const vWords = verseWordsMap.get(v.ID)
+      if (!vWords) continue
+      const n = wordMatchCount(settled, vWords)
+      if (n > bestCtxMatch) bestCtxMatch = n
+      if (bestCtxMatch >= 2) break
+    }
+    leftContext = bestCtxMatch < 2
+  }
+  const allowCrossShabad = strongFinal || leftContext
 
   // If we already have a shabad/bani context AND we won't promote out of it
   // this turn, only consider those verses — much faster than scanning 142k
@@ -260,7 +278,9 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
       minMatch = 2; inertia = 1
     } else {
       if (!allowCrossShabad) continue
-      minMatch = 3; inertia = 0
+      // Interim-driven jumps (no confident final yet) demand stronger word
+      // evidence than final-driven ones — protects against transient noise.
+      minMatch = strongFinal ? 3 : 4; inertia = 0
     }
 
     const vWords = verseWordsMap.get(v.ID)
@@ -343,6 +363,10 @@ export function SearchApp({ data }) {
   const [bcastLive,  setBcastLive]  = useState(false) // true = actively sending to display tab
   const [bcastBani,  setBcastBani]  = useState(null)  // bani meta when broadcasting a whole bani
   const [bcastSectionLabels, setBcastSectionLabels] = useState(null)
+  // Verses already covered in the current broadcast session. Keyed by __rowId
+  // (banis) or verse ID (shabads). Reset whenever a new shabad/bani is loaded.
+  // Presenter-only — never sent to the display tab.
+  const [bcastSungIds, setBcastSungIds] = useState(() => new Set())
 
   const bcastPanelOpen = bcastVerse !== null  // panel is visible (live or stopped)
   const isBroadcasting = bcastLive            // actively sending to display tab
@@ -375,6 +399,13 @@ export function SearchApp({ data }) {
 
   useEffect(() => { kirtanModeRef.current      = kirtanMode      }, [kirtanMode])
   useEffect(() => { bcastDvRef.current         = bcastDv         }, [bcastDv])
+  // Mark the currently-displayed verse as sung. Bani rows have __rowId so
+  // refrains (same verse ID, different occurrence) are tracked separately.
+  useEffect(() => {
+    if (!bcastDv) return
+    const key = bcastDv.__rowId ?? bcastDv.ID
+    setBcastSungIds(prev => prev.has(key) ? prev : new Set(prev).add(key))
+  }, [bcastDv])
   useEffect(() => { bcastSvsRef.current        = bcastSvs        }, [bcastSvs])
   useEffect(() => { bcastLiveRef.current       = bcastLive       }, [bcastLive])
   useEffect(() => { displaySettingsRef.current = displaySettings }, [displaySettings])
@@ -673,13 +704,19 @@ export function SearchApp({ data }) {
             }
           }
           const shabadId = match.Shabads?.[0]?.ShabadID
+          // Threshold: forward sequential moves (singer going to the very next
+          // shabad in Granth order) commit at 2 events — strong prior signal
+          // since that's the typical kirtan flow. Any other cross-shabad jump
+          // needs 3 events as the original safeguard.
+          const curShabadId = bcastDvRef.current?.Shabads?.[0]?.ShabadID
+          const curIdx = curShabadId != null ? sortedShabadIds.indexOf(curShabadId) : -1
+          const isNextShabad = curIdx >= 0 && curIdx + 1 < sortedShabadIds.length && sortedShabadIds[curIdx + 1] === shabadId
+          const threshold = isNextShabad ? 2 : 3
           const prev = kirtanShabadCandidateRef.current
           if (prev?.shabadId === shabadId) {
             prev.count++
             prev.verse = match
-            // Two confident finals on the same new shabad is enough evidence —
-            // each event already requires conf≥0.6 and ≥3 matched words.
-            if (prev.count >= 2) {
+            if (prev.count >= threshold) {
               kirtanShabadCandidateRef.current = null
               const entry = findBaniForVerse(match.ID)
               const wrapped = entry?.verses.find(v => v.ID === match.ID)
@@ -823,6 +860,9 @@ export function SearchApp({ data }) {
     setBcastLive(true)
     setBcastBani(bani)
     setBcastSectionLabels(sectionLabels)
+    // New shabad/bani context — reset the sung-verse tracker so checkmarks
+    // start fresh.
+    setBcastSungIds(new Set([verse.__rowId ?? verse.ID]))
     setShowPreview(false)
     // If kirtan is listening for a candidate, the user has just chosen what to
     // broadcast manually — promote straight to auto-navigate mode so kirtan
@@ -1165,6 +1205,7 @@ export function SearchApp({ data }) {
             displayVerse={bcastDv}
             bani={bcastBani}
             sectionLabels={bcastSectionLabels}
+            sungIds={bcastSungIds}
             displaySettings={displaySettings}
             isLive={isBroadcasting}
             onSelectVerse={selectBcastVerse}
@@ -1487,7 +1528,7 @@ function BaniRow({ entry, active, onClick }) {
 /* Locked to what is live. Shows display controls. No close button.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    renders dividers like "ਪਉੜੀ 1" inline in the verse list (mirrors preview panel). */
-function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
   const count      = displaySettings.verseCount || 1
   // Identity by reference — duplicate verses (refrains) share IDs.
@@ -1687,6 +1728,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
             const rowId      = v.__rowId ?? v.ID
             const label      = sectionLabels?.get(rowId)
             const isJumpTarget = label && pendingJumpRowId === rowId
+            const isSung     = sungIds?.has(rowId)
             return (
               <div key={v.__rowId ?? `${i}-${v.ID}`}>
                 {label && <BookmarkLabel label={label} onZoomOut={() => setOutlineMode(true)} innerRef={isJumpTarget ? jumpRef : undefined} />}
@@ -1697,6 +1739,9 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
                   role="button" tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && onSelectVerse(v)}
                 >
+                  <span className={`sp-verse-sung${isSung ? ' done' : ''}`} aria-hidden="true">
+                    {isSung ? <IconCheck /> : ''}
+                  </span>
                   <span className="sp-verse-num">{i + 1}</span>
                   <div className="sp-verse-body">
                     <p className="sp-verse-g">{renderGurmukhi(v.Gurmukhi, displaySettings.larivar)}</p>
@@ -1787,6 +1832,9 @@ function IconBook() {
 }
 function IconBookmark({ className }) {
   return <svg className={className} width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+}
+function IconCheck() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 }
 function IconArrowLeft() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
