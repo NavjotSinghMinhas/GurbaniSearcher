@@ -1618,8 +1618,8 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
               <span /><span />
             </div>
             <h3>Did you know?</h3>
-            <p>Double-tap the shabad area to hide the header and controls — read the verses without distractions.</p>
-            <p className="sp-focus-hint-sub">Double-tap again to bring them back.</p>
+            <p>Double-tapping the shabad area hides the header and controls — so you can read the verses without distractions.</p>
+            <p className="sp-focus-hint-sub">Double-tapping again brings them back.</p>
             <button className="sp-focus-hint-ok" onClick={onDismissFocusHint}>Got it</button>
           </div>
         </div>
