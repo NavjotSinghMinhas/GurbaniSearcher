@@ -392,6 +392,18 @@ export function SearchApp({ data }) {
   const [announcementVisible, setAnnouncementVisible] = useState(false)
   const [announcementOpen, setAnnouncementOpen] = useState(false)  // modal
 
+  /* Mobile-only verse font size for the shabad preview panel. Mobile users
+     don't have the desktop Display Options, so they get a quick A−/A+ between
+     the Previous and Next buttons. */
+  const [mobileFontSize, setMobileFontSize] = useState(() => {
+    const n = parseInt(localStorage.getItem('gurbani-mobile-font') || '', 10)
+    return Number.isFinite(n) && n >= 14 && n <= 36 ? n : 18
+  })
+  useEffect(() => { localStorage.setItem('gurbani-mobile-font', String(mobileFontSize)) }, [mobileFontSize])
+  function changeMobileFontSize(delta) {
+    setMobileFontSize(s => Math.max(14, Math.min(36, s + delta)))
+  }
+
   /* history */
   const [searchHistory, setSearchHistory] = useState(loadHistory)
 
@@ -1275,6 +1287,8 @@ export function SearchApp({ data }) {
             bani={pvBani}
             sectionLabels={pvSectionLabels}
             isBroadcasting={isBroadcasting}
+            mobileFontSize={mobileFontSize}
+            onChangeMobileFontSize={changeMobileFontSize}
             onSelectVerse={selectPvVerse}
             onSendToBroadcast={sendToBroadcast}
             onPrevShabad={() => gotoSiblingShabadPreview(-1)}
@@ -1382,7 +1396,7 @@ function RecentItem({ entry, onOpen, onDelete }) {
 /* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    (rowId → label) renders dividers like "ਪਉੜੀ 1" inside the verse list. */
-function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
+function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, mobileFontSize, onChangeMobileFontSize, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const activeRef = useRef(null)
   const jumpRef   = useRef(null)
   const [outlineRequested, setOutlineMode] = useState(false)
@@ -1420,7 +1434,7 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
   }
 
   return (
-    <aside className="sa-panel sa-preview-panel" onClick={onFocus}>
+    <aside className="sa-panel sa-preview-panel" style={{ '--pv-font-size': `${mobileFontSize}px` }} onClick={onFocus}>
       <div className="sp-header">
         {bani ? (
           <div className="sp-bani-title">
@@ -1494,6 +1508,20 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
           >
             <IconArrowLeft /> <span>Previous</span>
           </button>
+          <div className="sp-font-controls" aria-label="Verse font size">
+            <button
+              className="sp-font-btn"
+              onClick={() => onChangeMobileFontSize?.(-2)}
+              disabled={mobileFontSize <= 14}
+              aria-label="Decrease text size"
+            >A−</button>
+            <button
+              className="sp-font-btn"
+              onClick={() => onChangeMobileFontSize?.(2)}
+              disabled={mobileFontSize >= 36}
+              aria-label="Increase text size"
+            >A+</button>
+          </div>
           <button
             className="sp-shabad-nav-btn"
             onClick={onNextShabad}

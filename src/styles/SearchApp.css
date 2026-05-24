@@ -995,12 +995,21 @@
   cursor: pointer;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.sp-shabad-nav-btn:hover:not(:disabled) {
-  background: var(--accent-dim);
-  border-color: var(--accent-border);
-  color: var(--accent);
+@media (hover: hover) {
+  .sp-shabad-nav-btn:hover:not(:disabled) {
+    background: var(--accent-dim);
+    border-color: var(--accent-border);
+    color: var(--accent);
+  }
 }
 .sp-shabad-nav-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+/* Touch devices keep :focus after tap; suppress the visible outline but keep
+   :focus-visible (keyboard-only) intact for a11y. */
+.sp-shabad-nav-btn:focus { outline: none; }
+.sp-shabad-nav-btn:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
+
+/* A−/A+ font-size buttons — only visible on mobile (rules inside 520px media query) */
+.sp-font-controls { display: none; }
 
 /* send to broadcast */
 .sp-broadcast-btn {
@@ -1593,8 +1602,10 @@
     top: 54px;
     width: 100% !important;
     z-index: 30;
-    border-left: none;
+    border-left: none !important;
+    border-right: none !important;
     border-top: 1px solid var(--border);
+    box-shadow: none !important;
     animation: panelSlideUp 0.22s ease both;
   }
 
@@ -1635,6 +1646,33 @@
 
   /* arrow-key hint is desktop-only — mobile uses taps. */
   .sp-verses-hint { display: none; }
+
+  /* mobile-only A−/A+ font-size controls between Prev and Next */
+  .sp-font-controls {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sp-font-btn {
+    min-width: 38px;
+    padding: 8px 6px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border-color 0.12s;
+  }
+  .sp-font-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  .sp-font-btn:focus { outline: none; }
+  .sp-font-btn:focus-visible { outline: 2px solid var(--accent-border); outline-offset: 2px; }
+
+  /* mobile verse text scales with the user's A−/A+ choice */
+  .sa-preview-panel .sp-verse-g { font-size: var(--pv-font-size, 18px); }
+
   .sa-kbd       { padding: 10px; gap: 10px; }
   .disp-content { padding: 24px 20px; }
 }
