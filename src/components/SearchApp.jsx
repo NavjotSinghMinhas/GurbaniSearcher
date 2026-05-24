@@ -11,6 +11,7 @@ const CHANNEL_NAME = 'gurbani-display'
 const HISTORY_KEY  = 'gurbani-history'
 const SETTINGS_KEY = 'gurbani-disp-settings'
 const THEME_KEY    = 'gurbani-theme'
+const ANNOUNCEMENT_KEY = 'gurbani-announcement'
 const MAX_HISTORY  = 50
 const DEFAULT_SETTINGS = {
   fontSize: 48, transSize: 20, showTranslation: true, showMeta: true, larivar: false, bg: 'dark', verseCount: 1, translationKey: 'auto',
@@ -319,6 +320,19 @@ function loadHistory() {
   catch { return [] }
 }
 
+function loadAnnouncement() {
+  try {
+    const raw = localStorage.getItem(ANNOUNCEMENT_KEY)
+    if (!raw) return null
+    const obj = JSON.parse(raw)
+    if (obj.endAt && Date.now() >= obj.endAt) {
+      localStorage.removeItem(ANNOUNCEMENT_KEY)
+      return null
+    }
+    return obj
+  } catch { return null }
+}
+
 function relTime(ts) {
   const d = Date.now() - ts
   if (d < 60000)     return 'just now'
@@ -371,6 +385,12 @@ export function SearchApp({ data }) {
 
   const bcastPanelOpen = bcastVerse !== null  // panel is visible (live or stopped)
   const isBroadcasting = bcastLive            // actively sending to display tab
+
+  /* announcement — custom overlay text shown on the broadcast screen, with
+     optional repeat cycle and end time. Survives reload via localStorage. */
+  const [announcement, setAnnouncement] = useState(loadAnnouncement)
+  const [announcementVisible, setAnnouncementVisible] = useState(false)
+  const [announcementOpen, setAnnouncementOpen] = useState(false)  // modal
 
   /* history */
   const [searchHistory, setSearchHistory] = useState(loadHistory)
@@ -554,12 +574,81 @@ export function SearchApp({ data }) {
     const ch = new BroadcastChannel(CHANNEL_NAME)
     channelRef.current = ch
     ch.onmessage = e => {
-      if (e.data.type === 'ping' && bcastDvRef.current && bcastLiveRef.current) {
-        pushBroadcast(bcastDvRef.current, displaySettingsRef.current, kirtanModeRef.current === 'auto')
+      if (e.data.type === 'ping') {
+        if (bcastDvRef.current && bcastLiveRef.current) {
+          pushBroadcast(bcastDvRef.current, displaySettingsRef.current, kirtanModeRef.current === 'auto')
+        }
+        // Re-send announcement state so a freshly-loaded display tab catches up.
+        if (announcementVisibleRef.current && announcementRef.current) {
+          ch.postMessage({ type: 'announcement', visible: true, text: announcementRef.current.text })
+        }
       }
     }
     return () => { ch.close(); channelRef.current = null }
   }, [])
+
+  /* Announcement cycle. Each cycle = show for showSec, then hide for the rest
+     of repeatSec. When endAt is reached, the announcement is cleared. */
+  const announcementRef        = useRef(announcement)
+  const announcementVisibleRef = useRef(false)
+  useEffect(() => { announcementRef.current        = announcement        }, [announcement])
+  useEffect(() => { announcementVisibleRef.current = announcementVisible }, [announcementVisible])
+
+  useEffect(() => {
+    if (announcement) localStorage.setItem(ANNOUNCEMENT_KEY, JSON.stringify(announcement))
+    else localStorage.removeItem(ANNOUNCEMENT_KEY)
+  }, [announcement])
+
+  useEffect(() => {
+    if (!announcement) { setAnnouncementVisible(false); return }
+    let visTimer, nextTimer, endTimer
+    let cancelled = false
+
+    // Independent endAt cleanup — covers the indefinite-show case (showSec=0)
+    // and snaps off mid-cycle the moment endAt is reached.
+    if (announcement.endAt) {
+      const delay = Math.max(0, announcement.endAt - Date.now())
+      endTimer = setTimeout(() => {
+        if (cancelled) return
+        setAnnouncement(null)
+        setAnnouncementVisible(false)
+      }, delay)
+    }
+
+    function cycle() {
+      if (cancelled) return
+      if (announcement.endAt && Date.now() >= announcement.endAt) {
+        setAnnouncement(null)
+        setAnnouncementVisible(false)
+        return
+      }
+      const cycleStart = Date.now()
+      setAnnouncementVisible(true)
+      // showSec <= 0 → indefinite: stays visible until endAt fires or user stops.
+      if (announcement.showSec <= 0) return
+      visTimer = setTimeout(() => {
+        if (cancelled) return
+        setAnnouncementVisible(false)
+        if (announcement.repeatSec > 0) {
+          const remaining = (announcement.repeatSec * 1000) - (Date.now() - cycleStart)
+          nextTimer = setTimeout(cycle, Math.max(0, remaining))
+        } else {
+          setAnnouncement(null)  // one-shot
+        }
+      }, announcement.showSec * 1000)
+    }
+
+    cycle()
+    return () => { cancelled = true; clearTimeout(visTimer); clearTimeout(nextTimer); clearTimeout(endTimer) }
+  }, [announcement])
+
+  useEffect(() => {
+    if (announcementVisible && announcement) {
+      channelRef.current?.postMessage({ type: 'announcement', visible: true, text: announcement.text })
+    } else {
+      channelRef.current?.postMessage({ type: 'announcement', visible: false })
+    }
+  }, [announcementVisible, announcement])
 
   function pushBroadcast(anchorVerse, settings, voiceActive = false, overrideSvs = null) {
     const svs = overrideSvs ?? bcastSvsRef.current
@@ -1209,6 +1298,9 @@ export function SearchApp({ data }) {
             sungIds={bcastSungIds}
             displaySettings={displaySettings}
             isLive={isBroadcasting}
+            announcement={announcement}
+            onOpenAnnouncement={() => setAnnouncementOpen(true)}
+            onStopAnnouncement={() => setAnnouncement(null)}
             onSelectVerse={selectBcastVerse}
             onUpdateSetting={updateSetting}
             onOpenDisplay={openDisplayTab}
@@ -1221,6 +1313,14 @@ export function SearchApp({ data }) {
             canNextShabad={!bcastBani && !!getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, 1)}
             onClose={closeBroadcastPanel}
             onFocus={() => { focusedPanelRef.current = 'broadcast' }}
+          />
+        )}
+
+        {announcementOpen && (
+          <AnnouncementModal
+            initial={announcement}
+            onSave={a => { setAnnouncement(a); setAnnouncementOpen(false) }}
+            onCancel={() => setAnnouncementOpen(false)}
           />
         )}
       </div>
@@ -1525,6 +1625,101 @@ function BaniRow({ entry, active, onClick }) {
   )
 }
 
+/* ── AnnouncementModal ───────────────────────────────────────── */
+/* Presenter-only form for sending an overlay announcement to the broadcast
+   screen. Supports one-shot OR repeating (show for X sec every Y sec) with
+   an optional auto-stop time. */
+function AnnouncementModal({ initial, onSave, onCancel }) {
+  const [text,      setText]      = useState(initial?.text || '')
+  const [showSec,   setShowSec]   = useState(initial?.showSec ?? '')
+  const [repeatSec, setRepeatSec] = useState(initial?.repeatSec ?? '')
+  const [endMin,    setEndMin]    = useState(() => {
+    if (initial?.endAt) return Math.max(1, Math.round((initial.endAt - Date.now()) / 60000))
+    return ''
+  })
+
+  function submit(e) {
+    e?.preventDefault()
+    const t = text.trim()
+    if (!t) return
+    const showNum = Number(showSec)
+    const show = Number.isFinite(showNum) && showNum >= 0 ? showNum : 30
+    const repeatNum = Number(repeatSec)
+    const repeat = Number.isFinite(repeatNum) && repeatNum >= 0 ? repeatNum : 0
+    // Guard against repeat shorter than show — would never hide. Doesn't
+    // apply when show is indefinite (0), repeat is meaningless then.
+    const safeRepeat = show > 0 && repeat > 0 && repeat <= show ? show + 5 : repeat
+    const finalRepeat = show <= 0 ? 0 : safeRepeat  // indefinite ignores repeat
+    const minutes = Math.max(0, Number(endMin) || 0)
+    onSave({
+      text: t,
+      showSec: show,
+      repeatSec: finalRepeat,
+      endAt: minutes > 0 ? Date.now() + minutes * 60 * 1000 : null,
+    })
+  }
+
+  return (
+    <div className="ann-modal-backdrop" onClick={onCancel}>
+      <form className="ann-modal" onClick={e => e.stopPropagation()} onSubmit={submit}>
+        <div className="ann-modal-header">
+          <h3>Announcement</h3>
+          <button type="button" className="sp-btn" onClick={onCancel} title="Close"><IconX /></button>
+        </div>
+        <label className="ann-field">
+          <span>Message</span>
+          <textarea
+            className="ann-textarea"
+            rows={3}
+            value={text}
+            onChange={e => setText(e.target.value)}
+            placeholder="e.g. Black Toyota Camry, please move from the entrance"
+            autoFocus
+          />
+        </label>
+        <div className="ann-field-row">
+          <label className="ann-field">
+            <span>Show for (sec)</span>
+            <input type="number" min="0" max="600" placeholder="∞" value={showSec} onChange={e => setShowSec(e.target.value)} />
+          </label>
+          <label className="ann-field">
+            <span>Repeat every (sec)</span>
+            <input type="number" min="0" max="3600" placeholder="off" value={repeatSec} onChange={e => setRepeatSec(e.target.value)} />
+          </label>
+          <label className="ann-field">
+            <span>Stop after (min)</span>
+            <input type="number" min="0" max="600" placeholder="never" value={endMin} onChange={e => setEndMin(e.target.value)} />
+          </label>
+        </div>
+        <p className="ann-hint">
+          {(() => {
+            const show = Number(showSec)
+            const rep  = Number(repeatSec)
+            const end  = Number(endMin)
+            if (show <= 0) {
+              return end > 0
+                ? `Stays on screen indefinitely, stopping after ${end} min.`
+                : `Stays on screen until you stop it.`
+            }
+            if (rep > 0) {
+              return end > 0
+                ? `Shows every ${rep}s for ${show}s, stopping in ${end} min.`
+                : `Shows every ${rep}s for ${show}s, until you stop it.`
+            }
+            return `One-shot — shows once for ${show}s.`
+          })()}
+        </p>
+        <div className="ann-actions">
+          <button type="button" className="ann-cancel-btn" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="sp-broadcast-btn sp-go-live-btn ann-send-btn" disabled={!text.trim()}>
+            <IconAirHorn /> Send
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 /* ── BroadcastPanel ──────────────────────────────────────────── */
 /* Locked to what is live. Shows display controls. No close button.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
@@ -1566,7 +1761,7 @@ function downscaleImage(file, maxDim, quality) {
   })
 }
 
-function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, announcement, onOpenAnnouncement, onStopAnnouncement, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const preset     = effectivePreset(displaySettings)
   const count      = displaySettings.verseCount || 1
   const previewStyle = preset.bgImage
@@ -1677,6 +1872,24 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           })
         ) : (
           <p className="sp-preview-empty" style={{ color: preset.sub }}>Select a verse below</p>
+        )}
+      </div>
+
+      {/* announcement trigger — small row above Display Options */}
+      <div className="sp-ann-row">
+        {announcement ? (
+          <>
+            <button className="sp-ann-btn active" onClick={onOpenAnnouncement} title="Edit announcement">
+              <IconAirHorn />
+              <span className="sp-ann-text">Announcement: “{announcement.text.slice(0, 28)}{announcement.text.length > 28 ? '…' : ''}”</span>
+            </button>
+            <button className="sp-ann-stop" onClick={onStopAnnouncement} title="Stop announcement">×</button>
+          </>
+        ) : (
+          <button className="sp-ann-btn" onClick={onOpenAnnouncement}>
+            <IconAirHorn />
+            <span>Send Announcement</span>
+          </button>
         )}
       </div>
 
@@ -1961,6 +2174,16 @@ function IconImage() {
 }
 function IconPencil() {
   return <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+}
+function IconAirHorn() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {/* loudspeaker body — diagonal horn opening up-right */}
+      <path d="M3 11 L21 6 L21 18 L3 13 Z" />
+      {/* circular handle hanging below */}
+      <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+    </svg>
+  )
 }
 function IconArrowLeft() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>

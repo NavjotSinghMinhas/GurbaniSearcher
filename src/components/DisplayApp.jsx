@@ -101,6 +101,7 @@ export function DisplayApp() {
   const [voiceActive,  setVoiceActive]  = useState(false)
   const [showFs,       setShowFs]       = useState(true)
   const [fsPrompt,     setFsPrompt]     = useState(false)
+  const [announcement, setAnnouncement] = useState(null)
   const channelRef = useRef(null)
   const hideTimerRef = useRef(null)
 
@@ -129,6 +130,9 @@ export function DisplayApp() {
         } else {
           setFsPrompt(true)
         }
+      }
+      if (e.data.type === 'announcement') {
+        setAnnouncement(e.data.visible && e.data.text ? e.data.text : null)
       }
     }
     ch.postMessage({ type: 'ping' })
@@ -194,6 +198,13 @@ export function DisplayApp() {
       >
         ⛶
       </button>
+
+      {/* announcement overlay — drawn over the verse content with high contrast */}
+      {announcement && (
+        <div className="disp-announcement">
+          <p className="disp-announcement-text">{announcement}</p>
+        </div>
+      )}
 
       <div className="disp-content">
         {verses.length === 0 ? (

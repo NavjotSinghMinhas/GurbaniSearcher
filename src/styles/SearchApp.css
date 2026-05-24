@@ -1092,6 +1092,109 @@
 .sp-preview-t   { font-size: 12px; line-height: 1.5; font-style: italic; opacity: 0.85; text-align: center; }
 .sp-preview-empty { font-size: 12px; opacity: 0.5; text-align: center; padding: 8px 0; }
 
+/* announcement trigger row — sits above Display Options */
+.sp-ann-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sp-ann-btn {
+  flex: 1;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sp-ann-btn:hover { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
+.sp-ann-btn.active {
+  border-style: solid;
+  border-color: rgba(34,197,94,0.5);
+  background: rgba(34,197,94,0.08);
+  color: #22c55e;
+  font-weight: 600;
+}
+.sp-ann-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sp-ann-stop {
+  width: 28px; height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.sp-ann-stop:hover { background: rgba(248,113,113,0.12); border-color: var(--danger); color: var(--danger); }
+
+/* announcement modal */
+.ann-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.55);
+  backdrop-filter: blur(2px);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.ann-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px 16px;
+  width: 100%;
+  max-width: 460px;
+  display: flex; flex-direction: column; gap: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.45);
+}
+.ann-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.ann-modal h3 { margin: 0; font-size: 16px; }
+.ann-field { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.ann-field > span { font-size: 11px; color: var(--text); opacity: 0.65; text-transform: uppercase; letter-spacing: 0.05em; }
+.ann-field input[type="number"], .ann-textarea {
+  font-family: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text-h);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+.ann-field input[type="number"]:focus,
+.ann-textarea:focus { border-color: var(--accent-border); }
+.ann-textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+.ann-field-row { display: flex; gap: 10px; }
+.ann-hint { font-size: 12px; color: var(--text); opacity: 0.7; margin: -4px 0 0; }
+.ann-actions { display: flex; justify-content: flex-end; gap: 10px; align-items: center; }
+.ann-cancel-btn {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.ann-cancel-btn:hover { background: var(--surface-2); color: var(--text-h); }
+.ann-send-btn {
+  margin: 0; padding: 9px 18px; font-size: 14px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.ann-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* display controls */
 .sp-controls {
   flex-shrink: 0;
@@ -1393,6 +1496,37 @@
 
 .disp-fs-btn.hidden { opacity: 0; pointer-events: none; }
 .disp-fs-btn:hover  { opacity: 1 !important; background: rgba(0,0,0,0.45); }
+
+/* announcement overlay — covers the verse content with a dim backdrop and
+   large readable text. Fades in via the .disp-announcement-enter animation. */
+.disp-announcement {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6vh 6vw;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+  animation: dispAnnouncementIn 0.25s ease;
+}
+.disp-announcement-text {
+  color: #fff;
+  font-family: var(--sans);
+  font-size: clamp(28px, 5vw, 64px);
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  max-width: 1400px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+@keyframes dispAnnouncementIn {
+  from { opacity: 0; transform: scale(0.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
 
 .disp-live {
   position: fixed;
