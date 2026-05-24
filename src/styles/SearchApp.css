@@ -1620,6 +1620,21 @@
   .sb-filter        { font-size: 16px; }
   .sb-maryada-select { font-size: 16px; }
   .sa-kbd-key   { min-width: 34px; height: 34px; font-size: 16px; }
+
+  /* center the "Gurbani Search" title on mobile — pulled out of the flex
+     flow with absolute positioning so the Baanis button and theme toggle
+     can sit at the edges without affecting the title's centering. */
+  .sa-logo { display: none; }
+  .sa-title {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  /* arrow-key hint is desktop-only — mobile uses taps. */
+  .sp-verses-hint { display: none; }
   .sa-kbd       { padding: 10px; gap: 10px; }
   .disp-content { padding: 24px 20px; }
 }
