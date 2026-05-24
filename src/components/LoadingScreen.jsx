@@ -72,7 +72,7 @@ export function LoadingScreen({ dataReady, onReady }) {
 
         <h1 className="screen-title">Gurbani Search</h1>
 
-        <p className="ls-label">Initializing search engine</p>
+        <p className="ls-label">Loading shabads and baanis</p>
 
         <div className="ls-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={progress}>
           <div className="ls-progress-track">
