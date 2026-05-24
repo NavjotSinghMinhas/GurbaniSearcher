@@ -8,6 +8,7 @@ const SETTINGS_KEY = 'gurbani-disp-settings'
 
 const DEFAULT_SETTINGS = {
   fontSize: 48, transSize: 20, showTranslation: true, showMeta: true, larivar: false, bg: 'dark', verseCount: 1, translationKey: 'auto',
+  customFg: null, customBg: null, customBgImage: null,
 }
 
 export const BG_PRESETS = {
@@ -16,6 +17,36 @@ export const BG_PRESETS = {
   cream:   { label: 'Cream',   bg: '#f5edd6', fg: '#2a1a0a', sub: 'rgba(60,30,10,0.6)'   },
   saffron: { label: 'Saffron', bg: '#b84800', fg: '#ffffff', sub: 'rgba(255,255,255,0.82)' },
   navy:    { label: 'Navy',    bg: '#0a1628', fg: '#e8f4ff', sub: 'rgba(180,220,255,0.7)' },
+}
+
+/* Resolve effective background/foreground for the current settings. Custom
+   color overrides win over the preset; when a custom fg is set, derive `sub`
+   at 60% alpha so meta text stays legible. When `bg === 'image'` and a stored
+   image exists, the image is rendered on top of the bg color; otherwise the
+   image is preserved but not displayed (so presets can deactivate it without
+   losing the upload). */
+export function effectivePreset(settings) {
+  const imageMode = settings.bg === 'image' && settings.customBgImage
+  if (imageMode) {
+    const fg = settings.customFg || '#ffffff'
+    const bg = settings.customBg || '#000000'
+    const sub = hexToRgba(fg, 0.6)
+    return { fg, bg, sub, bgImage: settings.customBgImage, label: 'Image' }
+  }
+  const base = BG_PRESETS[settings.bg] || BG_PRESETS.dark
+  const fg = settings.customFg || base.fg
+  const bg = settings.customBg || base.bg
+  const sub = settings.customFg ? hexToRgba(settings.customFg, 0.6) : base.sub
+  return { fg, bg, sub, bgImage: null, label: base.label }
+}
+
+function hexToRgba(hex, alpha) {
+  if (!hex || !hex.startsWith('#')) return hex
+  const h = hex.slice(1)
+  const r = parseInt(h.length === 3 ? h[0] + h[0] : h.slice(0, 2), 16)
+  const g = parseInt(h.length === 3 ? h[1] + h[1] : h.slice(2, 4), 16)
+  const b = parseInt(h.length === 3 ? h[2] + h[2] : h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 const LANG_LABELS  = { en: 'English', pu: 'Punjabi', puu: 'Punjabi', pa: 'Punjabi', hi: 'Hindi', es: 'Spanish', fr: 'French' }
@@ -125,14 +156,17 @@ export function DisplayApp() {
     hideTimerRef.current = setTimeout(() => setShowFs(false), 3000)
   }
 
-  const preset      = BG_PRESETS[settings.bg] || BG_PRESETS.dark
+  const preset      = effectivePreset(settings)
   const metaSize    = Math.max(11, Math.round((settings.transSize || 20) * 0.7))
   const firstVerse  = verses[0] ?? null
+  const appStyle    = preset.bgImage
+    ? { backgroundColor: preset.bg, color: preset.fg, backgroundImage: `url(${preset.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: preset.bg, color: preset.fg }
 
   return (
     <div
       className="disp-app"
-      style={{ background: preset.bg, color: preset.fg }}
+      style={appStyle}
       onMouseMove={onMouseMove}
     >
       {/* fullscreen click-to-confirm prompt (browser requires user gesture) */}

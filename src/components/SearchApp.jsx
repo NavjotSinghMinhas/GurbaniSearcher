@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import gurmukhiUtils from 'gurmukhi-utils'
-import { BG_PRESETS, getTranslation, getTranslationOptions, renderGurmukhi } from './DisplayApp.jsx'
+import { BG_PRESETS, getTranslation, getTranslationOptions, renderGurmukhi, effectivePreset } from './DisplayApp.jsx'
 import '../styles/SearchApp.css'
 
 const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
@@ -14,6 +14,7 @@ const THEME_KEY    = 'gurbani-theme'
 const MAX_HISTORY  = 50
 const DEFAULT_SETTINGS = {
   fontSize: 48, transSize: 20, showTranslation: true, showMeta: true, larivar: false, bg: 'dark', verseCount: 1, translationKey: 'auto',
+  customFg: null, customBg: null, customBgImage: null,
 }
 
 const MODES = [
@@ -1528,9 +1529,49 @@ function BaniRow({ entry, active, onClick }) {
 /* Locked to what is live. Shows display controls. No close button.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    renders dividers like "ਪਉੜੀ 1" inline in the verse list (mirrors preview panel). */
+/* Read a user-selected image file, downscale it to fit within 1920x1920 and
+   re-encode as JPEG at 0.85 quality. Keeps localStorage usage manageable
+   (raw camera files can be 5–10 MB; the cap is ~1 MB after this pass).
+   Also activates image mode (bg='image') so the upload is immediately visible. */
+async function handleBgImageChange(e, onUpdateSetting) {
+  const file = e.target?.files?.[0]
+  if (!file) return
+  try {
+    const dataUrl = await downscaleImage(file, 1920, 0.85)
+    onUpdateSetting('customBgImage', dataUrl)
+    onUpdateSetting('bg', 'image')
+  } catch (err) {
+    console.error('[BgImage]', err)
+    alert('Could not load that image. Try a different file.')
+  }
+  e.target.value = ''  // allow re-selecting the same file
+}
+
+function downscaleImage(file, maxDim, quality) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')) }
+    img.src = url
+  })
+}
+
 function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
-  const preset     = BG_PRESETS[displaySettings.bg] || BG_PRESETS.dark
+  const preset     = effectivePreset(displaySettings)
   const count      = displaySettings.verseCount || 1
+  const previewStyle = preset.bgImage
+    ? { backgroundColor: preset.bg, color: preset.fg, backgroundImage: `url(${preset.bgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : { background: preset.bg, color: preset.fg }
   // Identity by reference — duplicate verses (refrains) share IDs.
   const anchorIdx  = displayVerse ? shabadVerses.indexOf(displayVerse) : -1
   const verseWindow = anchorIdx !== -1
@@ -1539,6 +1580,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
   const transOpts  = getTranslationOptions(displayVerse?.Translations)
   const activeRef  = useRef(null)
   const [ctrlOpen, setCtrlOpen] = useState(false)
+  const fileInputRef = useRef(null)
   const jumpRef = useRef(null)
   const [outlineRequested, setOutlineMode] = useState(false)
   const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
@@ -1617,7 +1659,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
       {isLive && <>
 
       {/* live preview */}
-      <div className="sp-preview" style={{ background: preset.bg, color: preset.fg }}>
+      <div className="sp-preview" style={previewStyle}>
         <div className="sp-preview-actions">
           <button className="sp-preview-action-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
           <button className="sp-preview-action-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
@@ -1698,9 +1740,9 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
             <button className="sp-ctrl-btn" onClick={() => onUpdateSetting('verseCount', Math.min(8, count + 1))}>+</button>
           </div>
         </div>
-        <div className="sp-ctrl-row">
+        <div className="sp-ctrl-row sp-theme-row">
           <span className="sp-ctrl-label">Background</span>
-          <div className="sp-ctrl-group">
+          <div className="sp-ctrl-group sp-theme-group">
             {Object.entries(BG_PRESETS).map(([key, p]) => (
               <button
                 key={key}
@@ -1710,6 +1752,80 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
                 title={p.label}
               />
             ))}
+
+            <span className="sp-theme-or" aria-hidden="true">or</span>
+
+            {/* image swatch — click activates (or uploads if empty);
+                pencil overlay replaces; × removes */}
+            <span className="sp-bg-image-wrap">
+              <button
+                className={`sp-bg-btn sp-bg-image-btn${displaySettings.customBgImage ? ' has-image' : ''}${displaySettings.bg === 'image' ? ' active' : ''}`}
+                style={displaySettings.customBgImage
+                  ? { backgroundImage: `url(${displaySettings.customBgImage})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+                  : undefined}
+                onClick={() => {
+                  if (!displaySettings.customBgImage) fileInputRef.current?.click()
+                  else if (displaySettings.bg !== 'image') onUpdateSetting('bg', 'image')
+                }}
+                title={
+                  !displaySettings.customBgImage ? 'Upload background image'
+                  : displaySettings.bg === 'image' ? 'Image background active'
+                  : 'Use this image'
+                }
+              >
+                {!displaySettings.customBgImage && <IconImage />}
+              </button>
+              {displaySettings.customBgImage && (
+                <button
+                  className="sp-bg-image-edit"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Replace image"
+                >
+                  <IconPencil />
+                </button>
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={e => handleBgImageChange(e, onUpdateSetting)}
+              />
+            </span>
+            {displaySettings.customBgImage && (
+              <button
+                className="sp-mini-clear"
+                onClick={() => {
+                  onUpdateSetting('customBgImage', null)
+                  if (displaySettings.bg === 'image') onUpdateSetting('bg', 'dark')
+                }}
+                title="Remove image"
+              >×</button>
+            )}
+
+            <label className="sp-color-pick" title="Text color">
+              <input
+                type="color"
+                value={displaySettings.customFg || preset.fg}
+                onChange={e => onUpdateSetting('customFg', e.target.value)}
+              />
+              <span>Aa</span>
+            </label>
+            {displaySettings.customFg && (
+              <button className="sp-mini-clear" onClick={() => onUpdateSetting('customFg', null)} title="Reset text color">×</button>
+            )}
+
+            <label className="sp-color-pick" title="Background color">
+              <input
+                type="color"
+                value={displaySettings.customBg || preset.bg}
+                onChange={e => onUpdateSetting('customBg', e.target.value)}
+              />
+              <span>BG</span>
+            </label>
+            {displaySettings.customBg && (
+              <button className="sp-mini-clear" onClick={() => onUpdateSetting('customBg', null)} title="Reset background color">×</button>
+            )}
           </div>
         </div>
       </div>
@@ -1839,6 +1955,12 @@ function IconBookmark({ className }) {
 }
 function IconCheck() {
   return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+}
+function IconImage() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><polyline points="21 15 16 10 5 21"/></svg>
+}
+function IconPencil() {
+  return <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
 }
 function IconArrowLeft() {
   return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
