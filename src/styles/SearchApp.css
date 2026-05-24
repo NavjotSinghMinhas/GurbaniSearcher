@@ -1615,6 +1615,10 @@
   .sa-kirtan    { padding: 0 14px; }
   .sa-net-label { display: none; }
   .sa-input     { font-size: 16px; }
+  /* prevent iOS Safari/Chrome (both WebKit) from auto-zooming on focus —
+     any input under 16px triggers the zoom and never zooms back out. */
+  .sb-filter        { font-size: 16px; }
+  .sb-maryada-select { font-size: 16px; }
   .sa-kbd-key   { min-width: 34px; height: 34px; font-size: 16px; }
   .sa-kbd       { padding: 10px; gap: 10px; }
   .disp-content { padding: 24px 20px; }
