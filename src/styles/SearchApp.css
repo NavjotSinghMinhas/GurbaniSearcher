@@ -1238,7 +1238,7 @@
   box-shadow: inset 0 4px 6px -4px rgba(0, 0, 0, 0.25);
 }
 
-.sp-ctrl-row    { display: flex; align-items: center; gap: 10px; }
+.sp-ctrl-row    { display: flex; align-items: center; gap: 18px; }
 .sp-ctrl-label  { font-size: 11px; color: var(--text); opacity: 0.55; width: 76px; flex-shrink: 0; text-transform: uppercase; letter-spacing: 0.04em; }
 .sp-ctrl-group  { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
 .sp-ctrl-group-wrap { flex-wrap: wrap; }
