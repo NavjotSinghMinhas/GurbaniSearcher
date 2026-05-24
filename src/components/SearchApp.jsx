@@ -1548,12 +1548,6 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
       ) : (
         <div className="sp-verses sp-verses-preview" onClick={handleVersesTap}>
           <p className="sp-verses-hint">↑ ↓ arrow keys to navigate · click to select</p>
-          {showFocusHint && (
-            <div className="sp-focus-hint" onClick={e => { e.stopPropagation(); onDismissFocusHint?.() }}>
-              <span>Tip: double-tap the shabad to hide controls</span>
-              <button className="sp-focus-hint-close" aria-label="Dismiss">×</button>
-            </div>
-          )}
           {shabadVerses.map((v, i) => {
             // Identity by reference, not ID — duplicate verses (refrains) share IDs.
             const isActive = displayVerse === v
@@ -1614,6 +1608,20 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
           >
             <span>{bani ? 'Next baani' : 'Next'}</span> <IconArrowRight />
           </button>
+        </div>
+      )}
+
+      {showFocusHint && (
+        <div className="sp-focus-hint-backdrop" role="dialog" aria-modal="true">
+          <div className="sp-focus-hint-card">
+            <div className="sp-focus-hint-icon" aria-hidden="true">
+              <span /><span />
+            </div>
+            <h3>Did you know?</h3>
+            <p>Double-tap the shabad area to hide the header and controls — read the verses without distractions.</p>
+            <p className="sp-focus-hint-sub">Double-tap again to bring them back.</p>
+            <button className="sp-focus-hint-ok" onClick={onDismissFocusHint}>Got it</button>
+          </div>
         </div>
       )}
     </aside>
