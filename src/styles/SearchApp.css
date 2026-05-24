@@ -1119,6 +1119,22 @@
 
 .sp-ctrl-toggle:hover { background: var(--surface-2); color: var(--text-h); }
 
+/* Expand/collapse animation. grid-template-rows 0fr→1fr animates from 0 to
+   auto height; the inner body fades in/out and is clipped while collapsed. */
+.sp-ctrl-anim {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.16s ease;
+}
+.sp-ctrl-anim.open { grid-template-rows: 1fr; }
+.sp-ctrl-anim > .sp-ctrl-body {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.sp-ctrl-anim.open > .sp-ctrl-body { opacity: 1; }
+
 .sp-ctrl-body {
   padding: 4px 14px 10px;
   display: flex;

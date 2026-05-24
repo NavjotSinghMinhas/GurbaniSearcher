@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
+import './styles/index.css'
+import App from './components/App.jsx'
 
 // Apply saved theme before first paint so every screen (loading, download, search) inherits it
 const savedTheme = localStorage.getItem('gurbani-theme') || 'dark'

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import gurmukhiUtils from 'gurmukhi-utils'
 import { BG_PRESETS, getTranslation, getTranslationOptions, renderGurmukhi } from './DisplayApp.jsx'
-import './SearchApp.css'
+import '../styles/SearchApp.css'
 
 const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
 
@@ -34,7 +34,7 @@ const MARYADAS = [
   { id: 'Medium',    flag: 'existsMedium',    label: 'Medium' },
 ]
 const MARYADA_KEY = 'gurbani-maryada'
-const DEFAULT_MARYADA = 'SGPC'
+const DEFAULT_MARYADA = 'Medium'
 
 // Nitnem baanis surfaced at the top of the Baanis sidebar in this order
 const NITNEM_BANI_IDS = [2, 4, 6, 7, 9, 10, 21, 23, 24]
@@ -1644,7 +1644,8 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           <span>Display Options</span>
           <IconChevron open={ctrlOpen} />
         </button>
-      {ctrlOpen && <div className="sp-ctrl-body">
+      <div className={`sp-ctrl-anim${ctrlOpen ? ' open' : ''}`} aria-hidden={!ctrlOpen}>
+      <div className="sp-ctrl-body">
         <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Gurmukhi</span>
           <div className="sp-ctrl-group">
@@ -1710,7 +1711,8 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
             ))}
           </div>
         </div>
-      </div>}
+      </div>
+      </div>
       </div>
 
       </>}

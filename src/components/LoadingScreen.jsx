@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { streamParseGurbani } from './streamParseGurbani.js'
+import { streamParseGurbani } from '../lib/streamParseGurbani.js'
 
 const FACTS = [
   '36 Saints. 31 Ragas. One truth — gifted to every soul, without exception.',

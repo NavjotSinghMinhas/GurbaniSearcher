@@ -11,7 +11,7 @@ export default defineConfig({
       // The update banner in the UI notifies the user.
       registerType: 'prompt',
       strategies: 'injectManifest',
-      srcDir: 'src',
+      srcDir: 'src/workers',
       filename: 'sw.js',
       devOptions: {
         enabled: true,
