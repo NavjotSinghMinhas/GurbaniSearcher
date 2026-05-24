@@ -1120,26 +1120,31 @@
 .sp-ctrl-toggle:hover { background: var(--surface-2); color: var(--text-h); }
 
 /* Expand/collapse animation. grid-template-rows 0fr→1fr animates from 0 to
-   auto height; the inner body fades in/out and is clipped while collapsed. */
+   auto height. The outer wrapper is a pure clip container with no visual of
+   its own — visuals live on .sp-ctrl-body so they fully collapse with the
+   row (no leftover border line / padding when closed). */
 .sp-ctrl-anim {
   display: grid;
   grid-template-rows: 0fr;
   transition: grid-template-rows 0.16s ease;
 }
 .sp-ctrl-anim.open { grid-template-rows: 1fr; }
-.sp-ctrl-anim > .sp-ctrl-body {
+.sp-ctrl-anim > .sp-ctrl-clip {
   min-height: 0;
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.14s ease;
 }
-.sp-ctrl-anim.open > .sp-ctrl-body { opacity: 1; }
+.sp-ctrl-anim.open > .sp-ctrl-clip { opacity: 1; }
 
 .sp-ctrl-body {
-  padding: 4px 14px 10px;
+  padding: 10px 14px 12px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+  box-shadow: inset 0 4px 6px -4px rgba(0, 0, 0, 0.25);
 }
 
 .sp-ctrl-row    { display: flex; align-items: center; gap: 10px; }
@@ -1154,7 +1159,7 @@
   padding: 0 8px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text-h);
   font-size: 12px;
   font-family: inherit;
@@ -1176,7 +1181,7 @@
   height: 28px;
   border-radius: 6px;
   border: 1px solid var(--border);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text);
   font-size: 12px;
   font-family: inherit;

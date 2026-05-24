@@ -1645,6 +1645,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           <IconChevron open={ctrlOpen} />
         </button>
       <div className={`sp-ctrl-anim${ctrlOpen ? ' open' : ''}`} aria-hidden={!ctrlOpen}>
+      <div className="sp-ctrl-clip">
       <div className="sp-ctrl-body">
         <div className="sp-ctrl-row">
           <span className="sp-ctrl-label">Gurmukhi</span>
@@ -1711,6 +1712,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
             ))}
           </div>
         </div>
+      </div>
       </div>
       </div>
       </div>
