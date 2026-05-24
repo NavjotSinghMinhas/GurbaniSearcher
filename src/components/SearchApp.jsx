@@ -950,6 +950,11 @@ export function SearchApp({ data }) {
     setPvSectionLabels(null)
     setShowPreview(true)
     focusedPanelRef.current = 'preview'
+    // Mobile has no broadcast → desktop's "Send to Broadcast" is the moment
+    // history is normally saved. On mobile, opening the shabad IS the
+    // commitment, so save here. Bani opens go through openBani and are
+    // intentionally not recorded.
+    if (IS_MOBILE) saveHistory(historyEntry(verse))
   }
 
   function openFromHistory(entry) {
