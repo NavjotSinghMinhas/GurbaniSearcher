@@ -404,6 +404,32 @@ export function SearchApp({ data }) {
     setMobileFontSize(s => Math.max(14, Math.min(36, s + delta)))
   }
 
+  /* Focus mode (mobile): double-tap the shabad area hides the app header,
+     the panel meta header, and the bottom nav row, leaving just the verses.
+     Toggled back the same way. */
+  const [focusMode, setFocusMode] = useState(false)
+  useEffect(() => {
+    if (focusMode) document.body.classList.add('focus-mode')
+    else document.body.classList.remove('focus-mode')
+    return () => document.body.classList.remove('focus-mode')
+  }, [focusMode])
+  // Auto-exit focus mode when the preview panel closes — otherwise the body
+  // class would keep the app header hidden with nothing on screen.
+  useEffect(() => { if (!showPreview) setFocusMode(false) }, [showPreview])
+
+  /* First-time hint toast: only on mobile, only until the user has seen it. */
+  const [showFocusHint, setShowFocusHint] = useState(
+    () => IS_MOBILE && localStorage.getItem('gurbani-focus-hint-seen') !== '1'
+  )
+  function dismissFocusHint() {
+    setShowFocusHint(false)
+    localStorage.setItem('gurbani-focus-hint-seen', '1')
+  }
+  function toggleFocusMode() {
+    setFocusMode(f => !f)
+    if (showFocusHint) dismissFocusHint()
+  }
+
   /* history */
   const [searchHistory, setSearchHistory] = useState(loadHistory)
 
@@ -559,6 +585,27 @@ export function SearchApp({ data }) {
     }
     return m
   }, [baniInfo])
+
+  /* Bani prev/next order: same logic the sidebar uses — Nitnem first in
+     their curated order, then everything else with verses by ID. */
+  const sortedBaniIds = useMemo(() => {
+    const available = Array.from(baniInfo.values())
+      .filter(e => e.verses.length > 0)
+      .map(e => e.meta.ID)
+    const nitnem = NITNEM_BANI_IDS.filter(id => available.includes(id))
+    const seen = new Set(nitnem)
+    const others = available.filter(id => !seen.has(id)).sort((a, b) => a - b)
+    return [...nitnem, ...others]
+  }, [baniInfo])
+
+  function getSiblingBani(currentBaniId, dir) {
+    if (currentBaniId == null) return null
+    const idx = sortedBaniIds.indexOf(currentBaniId)
+    if (idx === -1) return null
+    const next = idx + dir
+    if (next < 0 || next >= sortedBaniIds.length) return null
+    return sortedBaniIds[next]
+  }
 
   /* Pick the most useful bani for a verse. Priority:
        1. Caller's preferred bani if it contains the verse (current bcast/preview)
@@ -1010,6 +1057,14 @@ export function SearchApp({ data }) {
     setPvBani(null); setPvSectionLabels(null)
   }
 
+  /* Prev/next baani — only meaningful when a bani is currently open in the
+     preview. Reuses openBani for the actual switch. */
+  function gotoSiblingBaniPreview(dir) {
+    if (!pvBani) return
+    const nextId = getSiblingBani(pvBani.ID, dir)
+    if (nextId != null) openBani(nextId)
+  }
+
   function gotoSiblingShabadBcast(dir) {
     if (bcastBani) return
     const sib = getSiblingShabad(bcastVerse?.Shabads?.[0]?.ShabadID, dir)
@@ -1289,10 +1344,18 @@ export function SearchApp({ data }) {
             isBroadcasting={isBroadcasting}
             mobileFontSize={mobileFontSize}
             onChangeMobileFontSize={changeMobileFontSize}
+            focusMode={focusMode}
+            onToggleFocusMode={toggleFocusMode}
+            showFocusHint={showFocusHint}
+            onDismissFocusHint={dismissFocusHint}
             onSelectVerse={selectPvVerse}
             onSendToBroadcast={sendToBroadcast}
             onPrevShabad={() => gotoSiblingShabadPreview(-1)}
             onNextShabad={() => gotoSiblingShabadPreview(1)}
+            onPrevBani={() => gotoSiblingBaniPreview(-1)}
+            onNextBani={() => gotoSiblingBaniPreview(1)}
+            canPrevBani={!!pvBani && getSiblingBani(pvBani.ID, -1) != null}
+            canNextBani={!!pvBani && getSiblingBani(pvBani.ID, 1) != null}
             canPrevShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, -1)}
             canNextShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, 1)}
             onClose={() => { setShowPreview(false); setPvVerse(null); setPvBani(null); setPvSectionLabels(null) }}
@@ -1396,11 +1459,25 @@ function RecentItem({ entry, onOpen, onDelete }) {
 /* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    (rowId → label) renders dividers like "ਪਉੜੀ 1" inside the verse list. */
-function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, mobileFontSize, onChangeMobileFontSize, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
+function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, mobileFontSize, onChangeMobileFontSize, focusMode, onToggleFocusMode, showFocusHint, onDismissFocusHint, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onPrevBani, onNextBani, canPrevBani, canNextBani, onClose, onFocus }) {
   const activeRef = useRef(null)
   const jumpRef   = useRef(null)
+  const lastTapRef = useRef(0)
   const [outlineRequested, setOutlineMode] = useState(false)
   const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
+
+  // Double-tap on the verses area toggles focus mode (mobile). Single taps
+  // still let the verse onClick fire — both run, which is fine since
+  // selecting a verse is a non-destructive action.
+  function handleVersesTap() {
+    const now = Date.now()
+    if (now - lastTapRef.current < 350) {
+      onToggleFocusMode?.()
+      lastTapRef.current = 0
+    } else {
+      lastTapRef.current = now
+    }
+  }
   const outlineItems = useMemo(() => buildOutlineItems(shabadVerses, sectionLabels), [shabadVerses, sectionLabels])
   // Derived — outline only renders when there are bookmarks to show. Avoids
   // state thrashing when the shabad changes or has no bookmarks at all.
@@ -1469,8 +1546,14 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
       {outlineMode ? (
         <OutlineList items={outlineItems} onJump={jumpToSection} onBack={() => setOutlineMode(false)} />
       ) : (
-        <div className="sp-verses sp-verses-preview">
+        <div className="sp-verses sp-verses-preview" onClick={handleVersesTap}>
           <p className="sp-verses-hint">↑ ↓ arrow keys to navigate · click to select</p>
+          {showFocusHint && (
+            <div className="sp-focus-hint" onClick={e => { e.stopPropagation(); onDismissFocusHint?.() }}>
+              <span>Tip: double-tap the shabad to hide controls</span>
+              <button className="sp-focus-hint-close" aria-label="Dismiss">×</button>
+            </div>
+          )}
           {shabadVerses.map((v, i) => {
             // Identity by reference, not ID — duplicate verses (refrains) share IDs.
             const isActive = displayVerse === v
@@ -1498,15 +1581,16 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
         </div>
       )}
 
-      {!bani && (
+      {/* nav row: shabad mode (any screen) or bani mode (mobile only) */}
+      {(!bani || IS_MOBILE) && (
         <div className="sp-shabad-nav">
           <button
             className="sp-shabad-nav-btn"
-            onClick={onPrevShabad}
-            disabled={!canPrevShabad}
-            title="Previous shabad"
+            onClick={bani ? onPrevBani : onPrevShabad}
+            disabled={bani ? !canPrevBani : !canPrevShabad}
+            title={bani ? 'Previous baani' : 'Previous shabad'}
           >
-            <IconArrowLeft /> <span>Previous</span>
+            <IconArrowLeft /> <span>{bani ? 'Prev baani' : 'Previous'}</span>
           </button>
           <div className="sp-font-controls" aria-label="Verse font size">
             <button
@@ -1524,11 +1608,11 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
           </div>
           <button
             className="sp-shabad-nav-btn"
-            onClick={onNextShabad}
-            disabled={!canNextShabad}
-            title="Next shabad"
+            onClick={bani ? onNextBani : onNextShabad}
+            disabled={bani ? !canNextBani : !canNextShabad}
+            title={bani ? 'Next baani' : 'Next shabad'}
           >
-            <span>Next</span> <IconArrowRight />
+            <span>{bani ? 'Next baani' : 'Next'}</span> <IconArrowRight />
           </button>
         </div>
       )}
