@@ -1092,48 +1092,36 @@
 .sp-preview-t   { font-size: 12px; line-height: 1.5; font-style: italic; opacity: 0.85; text-align: center; }
 .sp-preview-empty { font-size: 12px; opacity: 0.5; text-align: center; padding: 8px 0; }
 
-/* announcement trigger row — sits above Display Options */
-.sp-ann-row {
-  display: flex; align-items: center; gap: 6px;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
+/* announcement action button — lives alongside fullscreen / external link
+   in the preview-actions row. Pulses green when an announcement is live. */
+.sp-ann-action { position: relative; }
+.sp-ann-action.active { color: #22c55e !important; }
+.sp-ann-action.active::after {
+  content: '';
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 5px rgba(34, 197, 94, 0.7);
+  animation: kirtanPulse 1.2s ease-in-out infinite;
+  pointer-events: none;
 }
-.sp-ann-btn {
-  flex: 1;
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--text);
-  font-size: 13px;
-  cursor: pointer;
-  text-align: left;
-  min-width: 0;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
-}
-.sp-ann-btn:hover { background: var(--accent-dim); border-color: var(--accent-border); color: var(--accent); }
-.sp-ann-btn.active {
-  border-style: solid;
-  border-color: rgba(34,197,94,0.5);
-  background: rgba(34,197,94,0.08);
-  color: #22c55e;
+
+.ann-stop-btn {
+  padding: 9px 18px;
+  border-radius: 10px;
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--danger);
+  font-size: 14px;
+  font-family: inherit;
   font-weight: 600;
-}
-.sp-ann-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.sp-ann-stop {
-  width: 28px; height: 28px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  font-size: 16px;
   cursor: pointer;
-  flex-shrink: 0;
+  margin-right: auto;
   transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.sp-ann-stop:hover { background: rgba(248,113,113,0.12); border-color: var(--danger); color: var(--danger); }
+.ann-stop-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
 
 /* announcement modal */
 .ann-modal-backdrop {

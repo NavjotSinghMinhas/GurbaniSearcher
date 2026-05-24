@@ -1300,7 +1300,6 @@ export function SearchApp({ data }) {
             isLive={isBroadcasting}
             announcement={announcement}
             onOpenAnnouncement={() => setAnnouncementOpen(true)}
-            onStopAnnouncement={() => setAnnouncement(null)}
             onSelectVerse={selectBcastVerse}
             onUpdateSetting={updateSetting}
             onOpenDisplay={openDisplayTab}
@@ -1321,6 +1320,7 @@ export function SearchApp({ data }) {
             initial={announcement}
             onSave={a => { setAnnouncement(a); setAnnouncementOpen(false) }}
             onCancel={() => setAnnouncementOpen(false)}
+            onStop={() => { setAnnouncement(null); setAnnouncementOpen(false) }}
           />
         )}
       </div>
@@ -1629,7 +1629,7 @@ function BaniRow({ entry, active, onClick }) {
 /* Presenter-only form for sending an overlay announcement to the broadcast
    screen. Supports one-shot OR repeating (show for X sec every Y sec) with
    an optional auto-stop time. */
-function AnnouncementModal({ initial, onSave, onCancel }) {
+function AnnouncementModal({ initial, onSave, onCancel, onStop }) {
   const [text,      setText]      = useState(initial?.text || '')
   const [showSec,   setShowSec]   = useState(initial?.showSec ?? '')
   const [repeatSec, setRepeatSec] = useState(initial?.repeatSec ?? '')
@@ -1710,9 +1710,12 @@ function AnnouncementModal({ initial, onSave, onCancel }) {
           })()}
         </p>
         <div className="ann-actions">
+          {initial && onStop && (
+            <button type="button" className="ann-stop-btn" onClick={onStop}>Stop</button>
+          )}
           <button type="button" className="ann-cancel-btn" onClick={onCancel}>Cancel</button>
           <button type="submit" className="sp-broadcast-btn sp-go-live-btn ann-send-btn" disabled={!text.trim()}>
-            <IconAirHorn /> Send
+            <IconAirHorn /> {initial ? 'Update' : 'Send'}
           </button>
         </div>
       </form>
@@ -1761,7 +1764,7 @@ function downscaleImage(file, maxDim, quality) {
   })
 }
 
-function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, announcement, onOpenAnnouncement, onStopAnnouncement, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
+function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, sungIds, displaySettings, isLive, announcement, onOpenAnnouncement, onSelectVerse, onUpdateSetting, onOpenDisplay, onFullscreen, onStop, onResume, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onClose, onFocus }) {
   const preset     = effectivePreset(displaySettings)
   const count      = displaySettings.verseCount || 1
   const previewStyle = preset.bgImage
@@ -1856,6 +1859,13 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
       {/* live preview */}
       <div className="sp-preview" style={previewStyle}>
         <div className="sp-preview-actions">
+          <button
+            className={`sp-preview-action-btn sp-ann-action${announcement ? ' active' : ''}`}
+            onClick={onOpenAnnouncement}
+            title={announcement ? 'Announcement active — edit or stop' : 'Send announcement'}
+          >
+            <IconAirHorn />
+          </button>
           <button className="sp-preview-action-btn" onClick={onFullscreen} title="Fullscreen broadcast screen"><IconFullscreen /></button>
           <button className="sp-preview-action-btn" onClick={onOpenDisplay} title="Open broadcast screen"><IconExternalLink /></button>
         </div>
@@ -1872,24 +1882,6 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
           })
         ) : (
           <p className="sp-preview-empty" style={{ color: preset.sub }}>Select a verse below</p>
-        )}
-      </div>
-
-      {/* announcement trigger — small row above Display Options */}
-      <div className="sp-ann-row">
-        {announcement ? (
-          <>
-            <button className="sp-ann-btn active" onClick={onOpenAnnouncement} title="Edit announcement">
-              <IconAirHorn />
-              <span className="sp-ann-text">Announcement: “{announcement.text.slice(0, 28)}{announcement.text.length > 28 ? '…' : ''}”</span>
-            </button>
-            <button className="sp-ann-stop" onClick={onStopAnnouncement} title="Stop announcement">×</button>
-          </>
-        ) : (
-          <button className="sp-ann-btn" onClick={onOpenAnnouncement}>
-            <IconAirHorn />
-            <span>Send Announcement</span>
-          </button>
         )}
       </div>
 
