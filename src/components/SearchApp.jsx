@@ -165,10 +165,18 @@ function wordMatchCount(tWords, vWords) {
 //
 // Tiers (combined match count → action):
 //   in-context, same verse:        ≥1 match  (stay; strong inertia)
-//   in-context, same shabad/bani:  ≥2 matches (cross-verse jump within ctx)
+//   in-context, nearby (≤3 away):  ≥2 matches (cross-verse jump within ctx)
+//   in-context, mid (≤10 away):    ≥3 matches (long-bani locality bias)
+//   in-context, far (>10 away):    ≥4 matches (long-bani locality bias)
 //   different shabad (final):      ≥3 matches + isFinal && conf≥0.6
 //   different shabad (interim):    ≥4 matches + current shabad has <2 matches
 //   discovery (no context):        ≥2.5 matches (interim OK)
+//
+// The in-context distance tiers protect against false jumps inside long
+// banis (Sukhmani ~200 verses, Anand Sahib 40 pauris) where common kirtan
+// words ("har", "naam", "guru", "prabh") let a distant pauri coincidentally
+// outscore the next verse. Singers move pauri-by-pauri, so locality is a
+// strong prior.
 //
 // Chrome rarely emits finals during continuous kirtan, so cross-shabad has a
 // second trigger: when the rolling window's best in-context match drops below
@@ -249,26 +257,26 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
   // pattern outrank the current verse's inertia without waiting for the
   // current verse's matches to age out of the rolling window. Tail words
   // matching the next verse strengthen the boost further.
+  const ctxIdx = (hasCtx && contextShabadVerses) ? contextShabadVerses.indexOf(contextVerse) : -1
   let nextInCtx = null
   let nextTailMatch = 0
-  if (hasCtx && contextShabadVerses) {
-    const idx = contextShabadVerses.indexOf(contextVerse)
-    if (idx >= 0 && idx + 1 < contextShabadVerses.length) {
-      nextInCtx = contextShabadVerses[idx + 1]
-      const nextWords = verseWordsMap.get(nextInCtx.ID)
-      if (nextWords && nextWords.length > 0) {
-        // Look at the latest portion of the window (the bit Chrome is
-        // currently producing) — if those words match the next verse, the
-        // transition is happening RIGHT NOW.
-        const tail = windowed.slice(-3)
-        nextTailMatch = wordMatchCount(tail, nextWords)
-      }
+  if (ctxIdx >= 0 && ctxIdx + 1 < contextShabadVerses.length) {
+    nextInCtx = contextShabadVerses[ctxIdx + 1]
+    const nextWords = verseWordsMap.get(nextInCtx.ID)
+    if (nextWords && nextWords.length > 0) {
+      // Look at the latest portion of the window (the bit Chrome is
+      // currently producing) — if those words match the next verse, the
+      // transition is happening RIGHT NOW.
+      const tail = windowed.slice(-3)
+      nextTailMatch = wordMatchCount(tail, nextWords)
     }
   }
+  const poolIsCtx = (hasCtx && !allowCrossShabad)
 
   let best = null, bestScore = 0
 
-  for (const v of pool) {
+  for (let i = 0; i < pool.length; i++) {
+    const v = pool[i]
     let minMatch, inertia
     if (!hasCtx) {
       // Discovery: no surrounding shabad to anchor on, so demand a slightly
@@ -278,7 +286,20 @@ function smartMatchKirtan(speechResults, verses, contextVerse, contextShabadVers
     } else if (v.ID === contextVerse.ID) {
       minMatch = 1; inertia = 2
     } else if (ctxSet?.has(v.ID)) {
-      minMatch = 2; inertia = 1
+      // Distance-tiered threshold. Long banis (Sukhmani ~200 verses, Anand
+      // Sahib 40 pauris) contain many verses that share common words
+      // ("har", "naam", "guru", "prabh") — without a locality bias, a
+      // distant pauri coincidentally hitting 2 matches beats the actual
+      // next verse. Singers move pauri-by-pauri, so nearby positions stay
+      // cheap and far ones require progressively stronger evidence.
+      const distance = (poolIsCtx && ctxIdx >= 0) ? Math.abs(i - ctxIdx) : 0
+      if (distance <= 3) {
+        minMatch = 2; inertia = 1
+      } else if (distance <= 10) {
+        minMatch = 3; inertia = 0
+      } else {
+        minMatch = 4; inertia = 0
+      }
     } else {
       if (!allowCrossShabad) continue
       // Interim-driven jumps (no confident final yet) demand stronger word
