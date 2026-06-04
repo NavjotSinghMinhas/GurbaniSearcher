@@ -7,6 +7,7 @@ const { toUnicode, toAscii, isGurmukhi } = gurmukhiUtils
 
 const CHROME       = 'webkitSpeechRecognition' in window
 const IS_MOBILE    = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+  || (typeof window !== 'undefined' && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches)
 const CHANNEL_NAME = 'gurbani-display'
 const HISTORY_KEY  = 'gurbani-history'
 const SETTINGS_KEY = 'gurbani-disp-settings'
