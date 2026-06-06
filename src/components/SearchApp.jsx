@@ -380,18 +380,27 @@ export function SearchApp({ data }) {
   /* theme */
   const [theme, setTheme] = useState(() => localStorage.getItem(THEME_KEY) || 'dark')
 
-  /* ── PREVIEW PANEL — the "browsing" view ────────────────────── */
-  /* clicking a search result always lands here; does NOT touch broadcast */
-  const [pvVerse,   setPvVerse]   = useState(null)   // anchor verse (from search click)
-  const [pvSvs,     setPvSvs]     = useState([])     // shabad verses shown in preview
-  const [pvDv,      setPvDv]      = useState(null)   // currently highlighted verse in preview
-  const [pvBani,    setPvBani]    = useState(null)   // bani meta when preview is showing a whole bani
-  const [pvSectionLabels, setPvSectionLabels] = useState(null)  // Map<rowId, label> for bani section dividers
-  const [showPreview, setShowPreview] = useState(false)
+  /* ── SHABAD PREVIEW TABS — the "browsing" view ──────────────── */
+  /* clicking a search result opens (or re-selects) a tab here; never touches
+     broadcast. Each tab is one shabad or one bani, identified by `sid`. Mobile
+     keeps a single tab (the old one-preview-at-a-time behaviour); desktop lets
+     several stay open at once. `key` is a stable per-slot id used for React
+     keys and active-tab tracking; `sid` is the content identity used for dedup. */
+  const [pvTabs,      setPvTabs]      = useState([])  // [{ key, sid, verse, svs, dv, bani, sectionLabels }]
+  const [pvActiveKey, setPvActiveKey] = useState(null)
+  const tabKeyRef     = useRef(0)
 
-  /* ── BAANIS SIDEBAR ────────────────────────────────────────── */
-  const [showBanis, setShowBanis] = useState(false)
-  const [maryada,   setMaryada]   = useState(() => localStorage.getItem(MARYADA_KEY) || DEFAULT_MARYADA)
+  const activeTab       = pvTabs.find(t => t.key === pvActiveKey) || null
+  const showPreview     = activeTab != null
+  const pvVerse         = activeTab?.verse ?? null
+  const pvSvs           = activeTab?.svs ?? []
+  const pvDv            = activeTab?.dv ?? null
+  const pvBani          = activeTab?.bani ?? null
+  const pvSectionLabels = activeTab?.sectionLabels ?? null
+
+  /* ── RESULTS / BAANIS / RECENT tabs (under the search box) ──── */
+  const [navTab,  setNavTab]  = useState('recent')  // 'results' | 'banis' | 'recent'
+  const [maryada, setMaryada] = useState(() => localStorage.getItem(MARYADA_KEY) || DEFAULT_MARYADA)
 
   /* ── BROADCAST PANEL ───────────────────────────────────────── */
   const [bcastVerse, setBcastVerse] = useState(null)
@@ -477,7 +486,9 @@ export function SearchApp({ data }) {
   const bcastLiveRef       = useRef(false)
   const displaySettingsRef = useRef(displaySettings)
   const focusedPanelRef    = useRef('preview')
+  const activeTabRef       = useRef(null)
 
+  useEffect(() => { activeTabRef.current = activeTab }, [activeTab])
   useEffect(() => { kirtanModeRef.current      = kirtanMode      }, [kirtanMode])
   useEffect(() => { bcastDvRef.current         = bcastDv         }, [bcastDv])
   // Mark the currently-displayed verse as sung. Bani rows have __rowId so
@@ -776,6 +787,18 @@ export function SearchApp({ data }) {
     return () => clearTimeout(debounceRef.current)
   }, [query, mode, verses])
 
+  /* Nav-tab follows the search box: typing jumps to Results, an empty box
+     falls back to Recent. Only fires on the empty↔non-empty edge, so a manual
+     pick of Baanis sticks until the box's emptiness actually flips. */
+  const prevQueryEmptyRef = useRef(true)
+  useEffect(() => {
+    const empty = !query.trim()
+    if (empty !== prevQueryEmptyRef.current) {
+      prevQueryEmptyRef.current = empty
+      setNavTab(empty ? 'recent' : 'results')
+    }
+  }, [query])
+
   /* ── global arrow-key navigation ──────────────────────────── */
   useEffect(() => {
     function onKey(e) {
@@ -798,18 +821,18 @@ export function SearchApp({ data }) {
             pushBroadcast(v, displaySettingsRef.current, kirtanModeRef.current === 'auto')
           }
         }
-      } else if (showPreview) {
-        setPvDv(prev => {
-          const svs  = pvSvs
-          const idx  = prev ? svs.indexOf(prev) : -1
-          const next = Math.max(0, Math.min(svs.length - 1, idx + dir))
-          return svs[next] ?? prev
-        })
+      } else if (activeTabRef.current) {
+        const t    = activeTabRef.current
+        const svs  = t.svs
+        const idx  = t.dv ? svs.indexOf(t.dv) : -1
+        const next = Math.max(0, Math.min(svs.length - 1, idx + dir))
+        const nv   = svs[next]
+        if (nv) setTabDv(t.key, nv)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [showPreview, pvSvs])
+  }, [])
 
   /* ── kirtan voice ──────────────────────────────────────────── */
   function startKirtan() {
@@ -962,16 +985,37 @@ export function SearchApp({ data }) {
     return id && shabadIndex.has(id) ? shabadIndex.get(id) : [verse]
   }
 
-  /* ── preview panel actions ─────────────────────────────────── */
+  /* ── preview tab actions ───────────────────────────────────── */
+  // Patch just the active tab's display verse — used by clicks and arrow keys.
+  function setTabDv(key, dv) {
+    setPvTabs(tabs => tabs.map(t => t.key === key ? { ...t, dv } : t))
+  }
+
+  // Open `tabData` as a tab. Desktop: if a tab with the same `sid` already
+  // exists, re-select it and merge in the new payload (so a search click that
+  // lands on an already-open shabad jumps to the searched verse); otherwise
+  // append a new tab. Mobile: replace the single tab (no multi-tab UI).
+  function openTab(tabData) {
+    focusedPanelRef.current = 'preview'
+    if (!IS_MOBILE) {
+      const existing = pvTabs.find(t => t.sid === tabData.sid)
+      if (existing) {
+        setPvTabs(tabs => tabs.map(t => t.key === existing.key ? { ...t, ...tabData } : t))
+        setPvActiveKey(existing.key)
+        return existing.key
+      }
+    }
+    const key = ++tabKeyRef.current
+    const tab = { key, ...tabData }
+    setPvTabs(tabs => IS_MOBILE ? [tab] : [...tabs, tab])
+    setPvActiveKey(key)
+    return key
+  }
+
   function openVerse(verse) {
     const svs = getShabadVerses(verse)
-    setPvVerse(verse)
-    setPvSvs(svs)
-    setPvDv(verse)
-    setPvBani(null)
-    setPvSectionLabels(null)
-    setShowPreview(true)
-    focusedPanelRef.current = 'preview'
+    const shabadId = verse.Shabads?.[0]?.ShabadID
+    openTab({ sid: `s:${shabadId ?? verse.ID}`, verse, svs, dv: verse, bani: null, sectionLabels: null })
     // Mobile has no broadcast → desktop's "Send to Broadcast" is the moment
     // history is normally saved. On mobile, opening the shabad IS the
     // commitment, so save here. Bani opens go through openBani and are
@@ -987,45 +1031,58 @@ export function SearchApp({ data }) {
       return
     }
     const verse = verses.find(v => v.ID === entry.verseId)
-    if (!verse) return
-    const svs = entry.shabadId && shabadIndex.has(entry.shabadId)
-      ? shabadIndex.get(entry.shabadId) : [verse]
-    setPvVerse(verse); setPvSvs(svs); setPvDv(verse); setShowPreview(true)
-    setPvBani(null); setPvSectionLabels(null)
-    focusedPanelRef.current = 'preview'
+    if (verse) openVerse(verse)
   }
 
-  /* Switching maryada changes which verses belong to each bani, so any bani
-     currently rendered in the preview holds a now-stale verse list. Close it
-     and persist the choice; the user can re-open the bani to see the new view. */
+  /* Switching maryada changes which verses belong to each bani, so any open
+     bani tab holds a now-stale verse list. Drop bani tabs and persist the
+     choice; the user can re-open the bani to see the new view. */
   function changeMaryada(m) {
     setMaryada(m)
     localStorage.setItem(MARYADA_KEY, m)
-    if (pvBani) {
-      setShowPreview(false)
-      setPvVerse(null); setPvSvs([]); setPvDv(null)
-      setPvBani(null); setPvSectionLabels(null)
-    }
+    setPvTabs(tabs => {
+      const next = tabs.filter(t => !t.bani)
+      if (activeTab?.bani) setPvActiveKey(next[next.length - 1]?.key ?? null)
+      return next
+    })
   }
 
-  /* Open an entire bani (Japji Sahib, Jaap Sahib, …) in the preview panel. */
+  /* Open an entire bani (Japji Sahib, Jaap Sahib, …) in a preview tab. */
   function openBani(baniId) {
     const entry = baniInfo.get(baniId)
     if (!entry || entry.verses.length === 0) return
     const first = entry.verses[0]
-    setPvVerse(first)
-    setPvSvs(entry.verses)
-    setPvDv(first)
-    setPvBani(entry.meta)
-    setPvSectionLabels(entry.sectionLabels)
-    setShowPreview(true)
-    focusedPanelRef.current = 'preview'
+    openTab({ sid: `b:${baniId}`, verse: first, svs: entry.verses, dv: first, bani: entry.meta, sectionLabels: entry.sectionLabels })
   }
 
   function selectPvVerse(verse) {
-    setPvDv(verse)
+    setTabDv(pvActiveKey, verse)
     focusedPanelRef.current = 'preview'
     /* deliberately does NOT broadcast */
+  }
+
+  function selectPreviewTab(key) {
+    setPvActiveKey(key)
+    focusedPanelRef.current = 'preview'
+  }
+
+  // Close one tab; if it was active, fall through to the neighbour that slides
+  // into its slot (or the previous one when closing the last tab).
+  function closePreviewTab(key) {
+    setPvTabs(tabs => {
+      const idx  = tabs.findIndex(t => t.key === key)
+      const next = tabs.filter(t => t.key !== key)
+      if (key === pvActiveKey) {
+        const fallback = next[idx] || next[idx - 1] || null
+        setPvActiveKey(fallback ? fallback.key : null)
+      }
+      return next
+    })
+  }
+
+  function closeAllPreviewTabs() {
+    setPvTabs([])
+    setPvActiveKey(null)
   }
 
   /* ── broadcast panel actions ───────────────────────────────── */
@@ -1039,7 +1096,6 @@ export function SearchApp({ data }) {
     // New shabad/bani context — reset the sung-verse tracker so checkmarks
     // start fresh.
     setBcastSungIds(new Set([verse.__rowId ?? verse.ID]))
-    setShowPreview(false)
     // If kirtan is listening for a candidate, the user has just chosen what to
     // broadcast manually — promote straight to auto-navigate mode so kirtan
     // tracks this shabad/bani without another confirmation step.
@@ -1073,23 +1129,31 @@ export function SearchApp({ data }) {
     saveHistory(historyEntry(pvVerse, pvBani))
   }
 
-  /* Walk to the previous/next shabad in the preview panel. Banis are
-     contiguous readings, not shabads, so nav is suppressed in bani mode. */
-  function gotoSiblingShabadPreview(dir) {
-    if (pvBani) return
-    const sib = getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, dir)
-    if (!sib) return
-    const first = sib.verses[0]
-    setPvVerse(first); setPvSvs(sib.verses); setPvDv(first)
-    setPvBani(null); setPvSectionLabels(null)
+  // Replace the active tab's content in place (keeps its slot/key, updates sid).
+  function replaceActiveTab(patch) {
+    setPvTabs(tabs => tabs.map(t => t.key === pvActiveKey ? { ...t, ...patch } : t))
   }
 
-  /* Prev/next baani — only meaningful when a bani is currently open in the
-     preview. Reuses openBani for the actual switch. */
+  /* Walk to the previous/next shabad within the active tab. Banis are
+     contiguous readings, not shabads, so nav is suppressed in bani mode. */
+  function gotoSiblingShabadPreview(dir) {
+    if (!activeTab || activeTab.bani) return
+    const sib = getSiblingShabad(activeTab.verse?.Shabads?.[0]?.ShabadID, dir)
+    if (!sib) return
+    const first = sib.verses[0]
+    replaceActiveTab({ sid: `s:${sib.shabadId}`, verse: first, svs: sib.verses, dv: first, bani: null, sectionLabels: null })
+  }
+
+  /* Prev/next baani — only meaningful when the active tab holds a bani. Swaps
+     the bani in place within the same tab. */
   function gotoSiblingBaniPreview(dir) {
-    if (!pvBani) return
-    const nextId = getSiblingBani(pvBani.ID, dir)
-    if (nextId != null) openBani(nextId)
+    if (!activeTab?.bani) return
+    const nextId = getSiblingBani(activeTab.bani.ID, dir)
+    if (nextId == null) return
+    const entry = baniInfo.get(nextId)
+    if (!entry || entry.verses.length === 0) return
+    const first = entry.verses[0]
+    replaceActiveTab({ sid: `b:${nextId}`, verse: first, svs: entry.verses, dv: first, bani: entry.meta, sectionLabels: entry.sectionLabels })
   }
 
   function gotoSiblingShabadBcast(dir) {
@@ -1184,7 +1248,6 @@ export function SearchApp({ data }) {
 
   /* layout class drives CSS grid columns */
   const layoutCls = ['sa-layout',
-    showBanis      && 'has-banis',
     showPreview    && 'has-preview',
     bcastPanelOpen && 'has-broadcast',
   ].filter(Boolean).join(' ')
@@ -1195,14 +1258,6 @@ export function SearchApp({ data }) {
       {/* ── header ── */}
       <header className="sa-header">
         <div className="sa-header-left">
-          <button
-            className={`sa-banis-toggle${showBanis ? ' active' : ''}`}
-            onClick={() => setShowBanis(v => !v)}
-            title={showBanis ? 'Hide baanis' : 'Open baanis'}
-          >
-            <IconBook />
-            <span>Baanis</span>
-          </button>
           <img src="/icon.svg" className="sa-logo" alt="" aria-hidden="true" />
           <span className="sa-title">Gurbani Search</span>
         </div>
@@ -1236,18 +1291,6 @@ export function SearchApp({ data }) {
       </header>
 
       <div className={layoutCls}>
-
-        {/* ── baanis sidebar (left) ── */}
-        {showBanis && (
-          <BaniSidebar
-            baniInfo={baniInfo}
-            activeBaniId={pvBani?.ID ?? null}
-            maryada={maryada}
-            onChangeMaryada={changeMaryada}
-            onSelectBani={openBani}
-            onClose={() => setShowBanis(false)}
-          />
-        )}
 
         {/* ── search column ── */}
         <div className="sa-main">
@@ -1329,23 +1372,51 @@ export function SearchApp({ data }) {
             )}
           </div>}
 
-          {/* results / recent history */}
+          {/* Results / Baanis / Recent — the search box drives which tab is
+              active (see the nav-tab effect); Baanis can also be picked by hand. */}
+          <div className="sa-navtabs">
+            <button className={`sa-navtab${navTab === 'results' ? ' active' : ''}`} onClick={() => setNavTab('results')}>
+              Results{results.length > 0 && <span className="sa-navtab-count">{results.length}{results.length === 50 ? '+' : ''}</span>}
+            </button>
+            <button className={`sa-navtab${navTab === 'banis' ? ' active' : ''}`} onClick={() => setNavTab('banis')}>
+              Baanis
+            </button>
+            <button className={`sa-navtab${navTab === 'recent' ? ' active' : ''}`} onClick={() => setNavTab('recent')}>
+              Recent
+            </button>
+          </div>
+
           <div className="sa-results">
-            {query.trim() ? (
-              <>
-                {results.length === 0 && <p className="sa-empty">No results — try a different spelling or mode</p>}
-                {results.map(v => (
-                  <VerseCard
-                    key={v.ID}
-                    verse={v}
-                    isSelected={pvVerse?.ID === v.ID}
-                    onClick={() => openVerse(v)}
-                  />
-                ))}
-                {results.length === 50 && <p className="sa-cap">Showing first 50 — refine your search to see more</p>}
-              </>
-            ) : (
-              searchHistory.length > 0 && (
+            {navTab === 'results' && (
+              !query.trim()
+                ? <p className="sa-empty">Type above to search Gurbani</p>
+                : results.length === 0
+                  ? <p className="sa-empty">No results — try a different spelling or mode</p>
+                  : <>
+                      {results.map(v => (
+                        <VerseCard
+                          key={v.ID}
+                          verse={v}
+                          isSelected={pvVerse?.ID === v.ID}
+                          onClick={() => openVerse(v)}
+                        />
+                      ))}
+                      {results.length === 50 && <p className="sa-cap">Showing first 50 — refine your search to see more</p>}
+                    </>
+            )}
+
+            {navTab === 'banis' && (
+              <BaniList
+                baniInfo={baniInfo}
+                activeBaniId={pvBani?.ID ?? null}
+                maryada={maryada}
+                onChangeMaryada={changeMaryada}
+                onSelectBani={openBani}
+              />
+            )}
+
+            {navTab === 'recent' && (
+              searchHistory.length > 0 ? (
                 <div className="sa-recent">
                   <div className="sa-recent-hdr">
                     <span className="sa-recent-title">Recent</span>
@@ -1355,6 +1426,8 @@ export function SearchApp({ data }) {
                     <RecentItem key={entry.id} entry={entry} onOpen={() => openFromHistory(entry)} onDelete={() => deleteHistory(entry.id)} />
                   ))}
                 </div>
+              ) : (
+                <p className="sa-empty">No recent shabads yet</p>
               )
             )}
           </div>
@@ -1363,6 +1436,11 @@ export function SearchApp({ data }) {
         {/* ── PREVIEW PANEL ── (browsing; never auto-updates broadcast) */}
         {showPreview && (
           <ShabadPreviewPanel
+            tabs={pvTabs}
+            activeKey={pvActiveKey}
+            onSelectTab={selectPreviewTab}
+            onCloseTab={closePreviewTab}
+            onCloseAll={closeAllPreviewTabs}
             verse={pvVerse}
             shabadVerses={pvSvs}
             displayVerse={pvDv}
@@ -1385,7 +1463,7 @@ export function SearchApp({ data }) {
             canNextBani={!!pvBani && getSiblingBani(pvBani.ID, 1) != null}
             canPrevShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, -1)}
             canNextShabad={!pvBani && !!getSiblingShabad(pvVerse?.Shabads?.[0]?.ShabadID, 1)}
-            onClose={() => { setShowPreview(false); setPvVerse(null); setPvBani(null); setPvSectionLabels(null) }}
+            onClose={() => closePreviewTab(pvActiveKey)}
             onFocus={() => { focusedPanelRef.current = 'preview' }}
           />
         )}
@@ -1486,12 +1564,17 @@ function RecentItem({ entry, onOpen, onDelete }) {
 /* Shows the shabad you're browsing. No display controls. Has close + send-to-broadcast.
    When `bani` is set, the header shows the bani's Gurmukhi name and `sectionLabels`
    (rowId → label) renders dividers like "ਪਉੜੀ 1" inside the verse list. */
-function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, mobileFontSize, onChangeMobileFontSize, focusMode, onToggleFocusMode, showFocusHint, onDismissFocusHint, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onPrevBani, onNextBani, canPrevBani, canNextBani, onClose, onFocus }) {
+function ShabadPreviewPanel({ tabs, activeKey, onSelectTab, onCloseTab, onCloseAll, verse, shabadVerses, displayVerse, bani, sectionLabels, isBroadcasting, mobileFontSize, onChangeMobileFontSize, focusMode, onToggleFocusMode, showFocusHint, onDismissFocusHint, onSelectVerse, onSendToBroadcast, onPrevShabad, onNextShabad, canPrevShabad, canNextShabad, onPrevBani, onNextBani, canPrevBani, canNextBani, onClose, onFocus }) {
   const activeRef = useRef(null)
   const jumpRef   = useRef(null)
   const lastTapRef = useRef(0)
+  const justJumpedRef = useRef(false)
   const [outlineRequested, setOutlineMode] = useState(false)
   const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
+
+  // Switching tabs is a context change — drop any outline/jump state so the
+  // newly-shown tab starts on its verse list, scrolled to its active verse.
+  useEffect(() => { setOutlineMode(false); setPendingJumpRowId(null) }, [activeKey])
 
   // Double-tap on the verses area toggles focus mode (mobile). Single taps
   // still let the verse onClick fire — both run, which is fine since
@@ -1525,9 +1608,13 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
       } else {
         target.scrollIntoView({ block: 'start' })
       }
+      justJumpedRef.current = true
       setPendingJumpRowId(null)
-      return  // skip the activeRef scroll on this pass
+      return
     }
+    // setPendingJumpRowId(null) above triggers a second effect run — skip the
+    // auto-scroll-to-active-verse on that pass so we stay at the jumped section.
+    if (justJumpedRef.current) { justJumpedRef.current = false; return }
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [displayVerse, outlineMode, pendingJumpRowId])
 
@@ -1539,6 +1626,16 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
 
   return (
     <aside className="sa-panel sa-preview-panel" style={{ '--pv-font-size': `${mobileFontSize}px` }} onClick={onFocus}>
+      {/* tab strip — desktop only; mobile keeps a single preview at a time */}
+      {!IS_MOBILE && tabs.length > 0 && (
+        <PreviewTabs
+          tabs={tabs}
+          activeKey={activeKey}
+          onSelect={onSelectTab}
+          onCloseTab={onCloseTab}
+          onCloseAll={onCloseAll}
+        />
+      )}
       <div className="sp-header">
         {bani ? (
           <div className="sp-bani-title">
@@ -1655,10 +1752,47 @@ function ShabadPreviewPanel({ verse, shabadVerses, displayVerse, bani, sectionLa
   )
 }
 
-/* ── BaniSidebar ─────────────────────────────────────────────── */
-/* Left panel listing baanis. Top section pins Nitnem in a curated order; below
-   that, all remaining baanis (those with at least one verse) in their natural ID order. */
-function BaniSidebar({ baniInfo, activeBaniId, maryada, onChangeMaryada, onSelectBani, onClose }) {
+/* ── PreviewTabs ─────────────────────────────────────────────── */
+/* Desktop tab strip above the shabad preview. One chip per open shabad/bani;
+   each chip selects its tab and carries its own close ×. The trailing button
+   closes every tab at once. */
+function PreviewTabs({ tabs, activeKey, onSelect, onCloseTab, onCloseAll }) {
+  function tabLabel(t) {
+    if (t.bani) return NITNEM_LABELS[t.bani.ID] || t.bani.Token || toUnicode(t.bani.Gurmukhi || '')
+    return t.verse?.PageNo ? `Ang ${t.verse.PageNo}` : (t.verse?.Source?.SourceEnglish || 'Shabad')
+  }
+  return (
+    <div className="sp-tabs">
+      <div className="sp-tabs-scroll">
+        {tabs.map(t => (
+          <div
+            key={t.key}
+            className={`sp-tab${t.key === activeKey ? ' active' : ''}`}
+            onClick={() => onSelect(t.key)}
+            role="button" tabIndex={0}
+            onKeyDown={e => e.key === 'Enter' && onSelect(t.key)}
+            title={tabLabel(t)}
+          >
+            <span className="sp-tab-label">{tabLabel(t)}</span>
+            <button
+              className="sp-tab-close"
+              onClick={e => { e.stopPropagation(); onCloseTab(t.key) }}
+              title="Close tab"
+            ><IconX /></button>
+          </div>
+        ))}
+      </div>
+      {tabs.length > 1 && (
+        <button className="sp-tabs-closeall" onClick={onCloseAll} title="Close all tabs">Close all</button>
+      )}
+    </div>
+  )
+}
+
+/* ── BaniList ────────────────────────────────────────────────── */
+/* Baanis nav-tab body. Top section pins Nitnem in a curated order; below that,
+   all remaining baanis (those with at least one verse) in their natural ID order. */
+function BaniList({ baniInfo, activeBaniId, maryada, onChangeMaryada, onSelectBani }) {
   const [filter, setFilter] = useState('')
 
   const { nitnem, other } = useMemo(() => {
@@ -1690,27 +1824,35 @@ function BaniSidebar({ baniInfo, activeBaniId, maryada, onChangeMaryada, onSelec
   const otherFiltered  = other.filter(matches)
 
   return (
-    <aside className="sa-panel sa-banis-panel">
-      <div className="sp-header">
-        <div className="sp-meta sb-title">Baanis</div>
-        <div className="sp-actions">
-          <button className="sp-btn" onClick={onClose} title="Hide baanis"><IconX /></button>
-        </div>
-      </div>
-
+    <div className="sa-bani-list">
       <div className="sb-maryada">
         <label className="sb-maryada-label" htmlFor="sb-maryada-select">Maryada</label>
-        <select
-          id="sb-maryada-select"
-          className="sb-maryada-select"
-          value={maryada}
-          onChange={e => onChangeMaryada(e.target.value)}
-          title="Filters baani contents to this tradition"
-        >
-          {MARYADAS.map(m => (
-            <option key={m.id} value={m.id}>{m.label}</option>
-          ))}
-        </select>
+        {IS_MOBILE ? (
+          <select
+            id="sb-maryada-select"
+            className="sb-maryada-select"
+            value={maryada}
+            onChange={e => onChangeMaryada(e.target.value)}
+            title="Filters baani contents to this tradition"
+          >
+            {MARYADAS.map(m => (
+              <option key={m.id} value={m.id}>{m.label}</option>
+            ))}
+          </select>
+        ) : (
+          <div className="sb-maryada-pills" role="group" aria-label="Select maryada tradition">
+            {MARYADAS.map(m => (
+              <button
+                key={m.id}
+                className={`sb-maryada-pill${maryada === m.id ? ' active' : ''}`}
+                onClick={() => onChangeMaryada(m.id)}
+                title={`Filter baanis to ${m.label} tradition`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="sb-filter-wrap">
@@ -1728,34 +1870,38 @@ function BaniSidebar({ baniInfo, activeBaniId, maryada, onChangeMaryada, onSelec
         {nitnemFiltered.length > 0 && (
           <>
             <div className="sb-group-label">Nitnem</div>
-            {nitnemFiltered.map(entry => (
-              <BaniRow
-                key={entry.meta.ID}
-                entry={entry}
-                active={activeBaniId === entry.meta.ID}
-                onClick={() => onSelectBani(entry.meta.ID)}
-              />
-            ))}
+            <div className="sb-grid">
+              {nitnemFiltered.map(entry => (
+                <BaniRow
+                  key={entry.meta.ID}
+                  entry={entry}
+                  active={activeBaniId === entry.meta.ID}
+                  onClick={() => onSelectBani(entry.meta.ID)}
+                />
+              ))}
+            </div>
           </>
         )}
         {otherFiltered.length > 0 && (
           <>
             <div className="sb-group-label">All baanis</div>
-            {otherFiltered.map(entry => (
-              <BaniRow
-                key={entry.meta.ID}
-                entry={entry}
-                active={activeBaniId === entry.meta.ID}
-                onClick={() => onSelectBani(entry.meta.ID)}
-              />
-            ))}
+            <div className="sb-grid">
+              {otherFiltered.map(entry => (
+                <BaniRow
+                  key={entry.meta.ID}
+                  entry={entry}
+                  active={activeBaniId === entry.meta.ID}
+                  onClick={() => onSelectBani(entry.meta.ID)}
+                />
+              ))}
+            </div>
           </>
         )}
         {nitnemFiltered.length === 0 && otherFiltered.length === 0 && (
           <p className="sb-empty">No matching baanis</p>
         )}
       </div>
-    </aside>
+    </div>
   )
 }
 
@@ -1927,6 +2073,7 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
   const [ctrlOpen, setCtrlOpen] = useState(false)
   const fileInputRef = useRef(null)
   const jumpRef = useRef(null)
+  const justJumpedRef = useRef(false)
   const [outlineRequested, setOutlineMode] = useState(false)
   const [pendingJumpRowId, setPendingJumpRowId] = useState(null)
   const outlineItems = useMemo(() => buildOutlineItems(shabadVerses, sectionLabels), [shabadVerses, sectionLabels])
@@ -1944,16 +2091,17 @@ function BroadcastPanel({ verse, shabadVerses, displayVerse, bani, sectionLabels
       } else {
         target.scrollIntoView({ block: 'start' })
       }
+      justJumpedRef.current = true
       setPendingJumpRowId(null)
       return
     }
+    if (justJumpedRef.current) { justJumpedRef.current = false; return }
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
   }, [displayVerse, outlineMode, pendingJumpRowId])
 
   function jumpToSection(item) {
     setPendingJumpRowId(item.rowId)
     setOutlineMode(false)
-    onSelectVerse(item.verse)  // broadcast push happens inside selectBcastVerse if live
   }
 
   return (
@@ -2298,9 +2446,6 @@ function IconSun() {
 }
 function IconMoon() {
   return <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-}
-function IconBook() {
-  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
 }
 function IconBookmark({ className }) {
   return <svg className={className} width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>

@@ -343,6 +343,56 @@
   letter-spacing: 0.03em;
 }
 
+/* ─── nav tabs (Results / Baanis / Recent) ──────────────────────────────────── */
+
+.sa-navtabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  gap: 4px;
+  padding: 10px 20px 0;
+  max-width: 800px;
+  width: 100%;
+  margin: 12px auto 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.sa-navtab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: color 0.15s, opacity 0.15s, border-color 0.15s;
+}
+.sa-navtab:hover { opacity: 0.9; }
+.sa-navtab.active {
+  color: var(--accent);
+  opacity: 1;
+  border-bottom-color: var(--accent);
+}
+
+.sa-navtab-count {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+/* baanis nav-tab body */
+.sa-bani-list { display: flex; flex-direction: column; }
+
 /* ─── results ───────────────────────────────────────────────────────────────── */
 
 .sa-results {
@@ -577,71 +627,36 @@
   animation: panelSlide 0.2s ease both;
 }
 
-.sa-preview-panel { width: 420px; }
+.sa-preview-panel { width: 520px; }
 .sa-bcast-panel   { width: 460px; background: var(--surface-2); }
 
-/* baanis sidebar — same .sa-panel base, but anchored on the left */
-.sa-banis-panel {
-  width: 260px;
-  border-left: none;
-  border-right: 1px solid var(--border);
-  animation: panelSlideLeft 0.2s ease both;
-}
-
-/* tighten panels when multiple are open so the page still breathes */
-.has-banis.has-preview .sa-banis-panel,
-.has-banis.has-broadcast .sa-banis-panel { width: 230px; }
-.has-banis.has-preview.has-broadcast .sa-banis-panel { width: 210px; }
-.has-banis.has-preview.has-broadcast .sa-preview-panel { width: 320px; }
-.has-banis.has-preview.has-broadcast .sa-bcast-panel   { width: 380px; }
-
 /* narrower preview when both panels are open */
-.has-preview.has-broadcast .sa-preview-panel { width: 360px; }
+.has-preview.has-broadcast .sa-preview-panel { width: 420px; }
 .has-preview.has-broadcast .sa-bcast-panel   { width: 420px; }
 
 @keyframes panelSlide {
   from { opacity: 0; transform: translateX(18px); }
   to   { opacity: 1; transform: translateX(0); }
 }
-@keyframes panelSlideLeft {
-  from { opacity: 0; transform: translateX(-18px); }
-  to   { opacity: 1; transform: translateX(0); }
+
+/* Search column glides in from the right as it settles into its narrower,
+   left-aligned slot when a panel opens — a small motion, not a big one. */
+.sa-layout.has-preview .sa-main,
+.sa-layout.has-broadcast .sa-main {
+  animation: searchShiftLeft 0.22s ease both;
+}
+@keyframes searchShiftLeft {
+  from { transform: translateX(16px); opacity: 0.65; }
+  to   { transform: translateX(0); opacity: 1; }
 }
 
-/* baanis header toggle button */
-.sa-banis-toggle {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, color 0.15s;
-  margin-right: 4px;
-}
-.sa-banis-toggle:hover,
-.sa-banis-toggle.active {
-  background: var(--accent-dim);
-  border-color: var(--accent-border);
-  color: var(--accent);
-}
+/* baanis nav-tab contents */
 
-/* baanis sidebar contents */
-.sb-title { font-weight: 700; font-size: 13px; opacity: 0.9; }
-
-/* maryada (tradition) selector — sits just under the panel header.
-   SGPC vs Taksal vs Buddha Dal vs Medium versions of the same baani differ. */
 .sb-maryada {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px 0;
+  gap: 10px;
+  padding: 0 0 14px;
   flex-shrink: 0;
 }
 .sb-maryada-label {
@@ -653,15 +668,43 @@
   opacity: 0.55;
   flex-shrink: 0;
 }
+.sb-maryada-pills {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+.sb-maryada-pill {
+  flex: 1;
+  padding: 5px 6px;
+  font-size: 11.5px;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text);
+  opacity: 0.7;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
+  white-space: nowrap;
+  text-align: center;
+}
+.sb-maryada-pill:hover { opacity: 1; border-color: var(--accent-border); background: var(--accent-dim); }
+.sb-maryada-pill.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  opacity: 1;
+  font-weight: 600;
+}
 .sb-maryada-select {
   flex: 1;
   min-width: 0;
-  padding: 6px 8px;
+  padding: 7px 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--text-h);
-  font-size: 12.5px;
+  font-size: 14px;
   font-family: inherit;
   cursor: pointer;
   outline: none;
@@ -669,7 +712,7 @@
 }
 .sb-maryada-select:focus { border-color: var(--accent-border); box-shadow: 0 0 0 2px var(--accent-dim); }
 
-.sb-filter-wrap { padding: 10px 12px 6px; flex-shrink: 0; }
+.sb-filter-wrap { padding: 0 0 12px; flex-shrink: 0; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
 .sb-filter {
   width: 100%;
   padding: 8px 10px;
@@ -687,7 +730,7 @@
 .sb-filter::placeholder { color: var(--text); opacity: 0.45; }
 .sb-filter::-webkit-search-cancel-button { display: none; }
 
-.sb-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 8px 14px; }
+.sb-list { overflow: visible; padding: 0 0 14px; }
 
 .sb-group-label {
   font-size: 10px;
@@ -696,26 +739,32 @@
   text-transform: uppercase;
   color: var(--text);
   opacity: 0.5;
-  padding: 12px 6px 6px;
+  padding: 10px 2px 6px;
+}
+
+.sb-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 4px;
 }
 
 .sb-row {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 3px;
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface);
   color: var(--text-h);
   text-align: left;
   cursor: pointer;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.sb-row + .sb-row { margin-top: 2px; }
-.sb-row:hover { background: var(--accent-dim); border-color: var(--accent-border); }
+.sb-row:hover { background: var(--surface-2); border-color: var(--accent-border); }
 .sb-row.active {
   background: var(--accent-dim);
   border-color: var(--accent);
@@ -724,24 +773,27 @@
 
 .sb-row-g {
   font-family: var(--gurmukhi);
-  font-size: 16px;
-  line-height: 1.25;
-  white-space: nowrap;
+  font-size: 15px;
+  line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .sb-row-sub {
-  font-size: 11px;
-  opacity: 0.65;
+  font-size: 10.5px;
+  opacity: 0.6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  margin-top: 1px;
 }
-.sb-row-count { opacity: 0.6; }
+.sb-row-count { opacity: 0.55; }
 
-.sb-empty { padding: 16px 12px; font-size: 12px; color: var(--text); opacity: 0.55; }
+.sb-empty { padding: 16px 2px; font-size: 12px; color: var(--text); opacity: 0.55; }
 
 /* bani title in preview header (replaces plain meta line when viewing a bani) */
 .sp-bani-title {
@@ -912,6 +964,89 @@
 }
 
 /* panel header */
+/* ─── preview tab strip ─────────────────────────────────────────────────────── */
+
+.sp-tabs {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-shrink: 0;
+}
+
+.sp-tabs-scroll {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sp-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  max-width: 160px;
+  padding: 5px 8px 5px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.sp-tab:hover { border-color: var(--accent-border); }
+.sp-tab.active {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sp-tab-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sp-tab-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.12s, background 0.12s;
+}
+.sp-tab-close:hover { opacity: 1; background: rgba(248,113,113,0.18); color: var(--danger); }
+
+.sp-tabs-closeall {
+  flex-shrink: 0;
+  align-self: flex-start;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: opacity 0.12s, color 0.12s, border-color 0.12s;
+}
+.sp-tabs-closeall:hover { opacity: 1; color: var(--danger); border-color: var(--danger); }
+
 .sp-header {
   display: flex;
   align-items: center;
@@ -1622,14 +1757,16 @@
 @media (max-width: 520px) {
   .sa-header    { padding: 11px 14px; }
   .sa-controls  { padding: 12px 14px 0; }
+  .sa-navtabs   { padding: 8px 14px 0; }
   .sa-results   { padding: 10px 14px 24px; }
   .sa-kirtan    { padding: 0 14px; }
   .sa-net-label { display: none; }
   .sa-input     { font-size: 16px; }
   /* prevent iOS Safari/Chrome (both WebKit) from auto-zooming on focus —
      any input under 16px triggers the zoom and never zooms back out. */
-  .sb-filter        { font-size: 16px; }
+  .sb-filter         { font-size: 16px; }
   .sb-maryada-select { font-size: 16px; }
+  .sb-grid           { grid-template-columns: 1fr; }
   .sa-kbd-key   { min-width: 34px; height: 34px; font-size: 16px; }
 
   /* center the "Gurbani Search" title on mobile — pulled out of the flex
